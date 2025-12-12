@@ -423,7 +423,7 @@ def pagina_procesos():
     st.subheader("📊 Diagrama del Proceso")
 
     # RUTA BASE DONDE GUARDAS IMÁGENES
-    ruta_base = "/Users/jair/Desktop/apps procesos/DIAGRAMA"
+    ruta_base = "DIAGRAMA"
 
     # Listar todos los archivos reales de esa carpeta
     try:

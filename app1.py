@@ -1,18 +1,121 @@
 import os
+import datetime
+import smtplib
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import datetime
-import os
-import streamlit as st
-import pandas as pd
-import plotly.express as pxstreamlit 
-import datetime
-import smtplib
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+st.set_page_config(page_title="Procesos", layout="wide")
+# --- CONFIGURACIÓN VISUAL VIVA 1A ---
+import streamlit as st
+import pandas as pd
+import plotly.express as px
 
+# --- CONFIGURACIÓN GLOBAL DE INTERFAZ ---
+st.set_page_config(page_title="Gestión Viva 1A", layout="wide")
+
+st.markdown("""
+<style>
+            
+            /* Color del título del Expander cuando está cerrado/abierto */
+    .st-emotion-cache-p5msec p {
+        color: #002b5c !important; /* Azul para el texto */
+        font-weight: bold !important;
+    }
+
+    /* Cambiar el fondo del expander cuando pasas el mouse o está abierto */
+    details[open] summary, details summary:hover {
+        background-color: #002b5c !important; /* Fondo Azul */
+        color: white !important; /* Texto Blanco */
+        border-radius: 5px;
+        transition: 0.3s;
+    }
+
+    /* Asegurar que la flechita y el texto dentro del resumen sean blancos al abrir */
+    details[open] summary svg, details[open] summary p {
+        fill: white !important;
+        color: white !important;
+    }
+    /* 1. FONDO Y TEXTO GENERAL */
+    .stApp { 
+        background-color: #FFFFFF; 
+    }
+
+    /* Forzamos negro solo en textos de contenido para no dañar iconos de sistema */
+    .stApp h1, .stApp h2, .stApp h3, .stApp p, .stApp label, .stMarkdown {
+        color: #000000 !important;
+    }
+
+    /* 2. SIDEBAR (AZUL VIVA 1A) */
+    [data-testid="stSidebar"] { 
+        background-color: #000000 !important; 
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] * { 
+        color: #FFFFFF !important; 
+    }
+
+    /* 3. ARREGLO PARA DESPLEGABLES Y MENÚS (Selectbox / Multiselect) */
+    /* Esto hace que el texto dentro de los cuadros de selección sea visible */
+    div[data-baseweb="select"] > div {
+        background-color: #f0f2f6 !important;
+        color: #000000 !important;
+    }
+    
+    /* 4. TABLAS PROFESIONALES (Títulos y Números en Azul/Blanco) */
+    .stTable {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        overflow: hidden;
+        background-color: white;
+    }
+
+    /* FORZAR BLANCO EN ENCABEZADOS (Títulos y Números laterales) */
+    /* El '*' le dice que pinte de blanco CUALQUIER texto dentro de esas celdas */
+    .stTable thead tr th, 
+    .stTable thead tr th *, 
+    .stTable tbody tr th, 
+    .stTable tbody tr th * {
+        background-color: #002b5c !important; 
+        color: #FFFFFF !important; 
+        font-weight: bold !important;
+        text-align: center !important;
+    }
+
+    /* CUERPO DE LA TABLA (Celdas de datos en negro) */
+    .stTable tbody tr td, 
+    .stTable tbody tr td * {
+        color: #000000 !important; /* TEXTO NEGRO PARA LOS DATOS */
+        border-bottom: 1px solid #eeeeee !important;
+        background-color: white !important;
+    }
+
+    /* EFECTO CEBRA PARA LAS FILAS DE DATOS */
+    .stTable tbody tr:nth-child(even) td {
+        background-color: #f9f9f9 !important;
+    }
+    /* 5. ICONOS DE SISTEMA (Flechas, Menú superior) */
+    /* Esto asegura que los botones de "Run" y el menú de 3 rayas se vean */
+    .stActionButton, .stApp [data-testid="stHeader"] {
+        background-color: rgba(255, 255, 255, 0.5);
+        color: #000000 !important;
+    }
+            /* 4. TARJETAS KPI */
+    .kpi-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #e0e0e0;
+        border-left: 6px solid #0056b3;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
 def enviar_correo_gmail(destinatario, asunto, cuerpo):
     remitente = "tucorreo@gmail.com"  # Cambia por tu correo
     contraseña = "tu_contraseña_de_aplicacion"  # Cambia por tu contraseña de app
@@ -40,8 +143,8 @@ def aplicar_formato_figura(fig, color_sequence=None, horizontal=False):
     fig.update_layout(
         template="plotly_dark",
         showlegend=False,
-        plot_bgcolor='rgba(44, 62, 80, 1)',  # azul fondo
-        paper_bgcolor='rgba(44, 62, 80, 1)',
+        plot_bgcolor='rgba(60, 80, 110, 1)',  # azul fondo
+        paper_bgcolor='rgba(60, 80, 110, 1)',
         font_color='white',
         xaxis=dict(
             title_font=dict(size=18),
@@ -70,94 +173,13 @@ def aplicar_formato_figura(fig, color_sequence=None, horizontal=False):
     if color_sequence:
         fig.update_traces(marker_color=color_sequence)
 
-custom_css = """
-<style>
-/* Fondo general app */
-[data-testid="stAppViewContainer"], 
-[data-testid="stAppViewContainer"] > div {
-  background-color: #1e272e !important;  /* gris oscuro azulado */
-  color: #e1e1e1 !important; /* texto gris claro */
-}
-
-/* Sidebar fondo igual al fondo principal */
-section[data-testid="stSidebar"] {
-  background-color: #1e272e !important;  /* mismo gris para sidebar */
-  color: #e1e1e1 !important;
-  border: 5px solid black;
-}
-
-/* Texto en sidebar */
-section[data-testid="stSidebar"] * {
-  color: #e1e1e1 !important;
-}
-
-/* Botones */
-div.stButton > button {
-  background-color: #34495e !important;  /* azul grisáceo oscuro */
-  color: #ecf0f1 !important; /* texto blanco humo */
-  border-radius: 6px;
-  font-weight: 600;
-  border: 1px solid #2c3e50;
-  padding: 8px 20px;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-  box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-}
-
-div.stButton > button:hover {
-  background-color: #3d566e !important;  /* azul gris claro */
-  border-color: #2980b9;
-  color: #ffffff !important;
-  cursor: pointer;
-}
-
-/* Inputs, textareas y selectboxes */
-input, textarea, select {
-  background-color: #2f3e4e !important;
-  color: #f0f0f0 !important;
-  border: 1.5px solid #506d84 !important;
-  border-radius: 6px !important;
-  padding: 6px 10px !important;
-  font-size: 15px !important;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  transition: border-color 0.3s ease;
-}
-
-input::placeholder, textarea::placeholder {
-  color: #a0aebf !important;
-}
-
-input:focus, textarea:focus, select:focus {
-  border-color: #7fb3d5 !important; /* azul claro al enfocar */
-  outline: none !important;
-  box-shadow: 0 0 8px #7fb3d5aa !important;
-}
-
-/* Ajuste para headers y textos que a veces no heredan color */
-h1, h2, h3, h4, h5, h6, p, label, span, div {
-  color: #e1e1e1 !important;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-}
-</style>
-"""
 
 
 
-st.markdown(custom_css, unsafe_allow_html=True)
 
 
 # ======== TÍTULO PRINCIPAL MEJORADO ========
 st.markdown('<h1 class="main-title">🗂️ Procesos Clínica Viva 1A</h1>', unsafe_allow_html=True)
-
-def rerun():
-    st.session_state["dummy"] = not st.session_state["dummy"]
-
-def logout():
-    st.session_state["logged"] = False
-    st.session_state["user"] = None
-    st.session_state["role"] = None
-    rerun()
-
 COMENTARIOS_PATH = "procesos/comentarios.xlsx"
 
 @st.cache_data
@@ -173,7 +195,7 @@ def cargar_comentarios():
 def guardar_comentarios(df):
     df.to_excel(COMENTARIOS_PATH, index=False)
 
-st.set_page_config(page_title="Procesos", layout="wide")
+
 
 # Variable dummy para forzar rerun sin experimental_rerun
 if "dummy" not in st.session_state:
@@ -244,13 +266,6 @@ if st.session_state.get("role") == "admin":
 st.write(f"Bienvenido **{st.session_state['user']}** (rol: {st.session_state['role']})")
 
 
-st.subheader("Gestión de Procesos")
-
-if st.session_state["role"] == "admin":
-    st.button("Agregar / Editar Proceso")
-else:
-    st.info("Solo lectura — no tienes permisos de edición.")
-
 # ============================
 # SIDEBAR
 # ============================
@@ -264,7 +279,7 @@ def render_sidebar():
 
     st.image("logo/logo2.jpeg", width=150)
 
-    options = ["Inicio", "Procesos", "Documentos", "Análisis"]
+    options = ["Inicio", "Procesos", "Documentos", "Análisis de Calidad"]
     if st.session_state.get("role") == "admin":
         options.append("Administración")
 
@@ -280,7 +295,8 @@ def render_sidebar():
             "Procesos": "📌 Procesos",
             "Documentos": "📄 Documentos",
             "Administración": "⚙️ Administración",
-            "Análisis": "📊 Análisis de Calidad",
+            "Análisis de Calidad":"📊 Análisis de Calidad",
+            "Mapa Estratégico": "Mapa Estratégico",
         }[x],
         key="pagina_activa"  # Aquí la clave de sesión
     )
@@ -294,296 +310,387 @@ def render_sidebar():
 # ============================
 # PÁGINAS
 # ============================
+
+
 def pagina_inicio():
-    st.markdown("<h1 style='color: white;'>🏠 Inicio</h1>", unsafe_allow_html=True)
+    # Título alineado a la izquierda (por defecto)
+    st.markdown("<h1 style='color: #002b5c;'>🏥 Panel de Control Viva 1A</h1>", unsafe_allow_html=True)
     st.write("Bienvenido al sistema de procesos de la Clínica Viva 1A.")
-    st.write("Resumen de documentos por tipo:")
 
     try:
         df = cargar_excel()
-    except FileNotFoundError:
-        st.error("No se encontró el archivo Bitacora1.xlsx.")
-        return
+        
+        # --- FILA DE KPIs (TARJETAS ORIGINALES) ---
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f'<div class="kpi-card"><h3>Total Documentos</h3><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
+        with col2:
+            proc_count = len(df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() == "PROCEDIMIENTO"])
+            st.markdown(f'<div class="kpi-card"><h3>Procedimientos</h3><h2>{proc_count}</h2></div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown(f'<div class="kpi-card"><h3>Vigencia Actual</h3><h2>2025</h2></div>', unsafe_allow_html=True)
+        
+        # =========================================================
+        # NUEVA SECCIÓN: RESUMEN ESTRATÉGICO (LO NUEVO AQUÍ)
+        # =========================================================
+        df_mapa = cargar_mapeo_procesos() # Llamamos a la función que lee la hoja 'TipoProceso'
+        
+        if df_mapa is not None:
+            st.markdown("### 🗺️ Clasificación de Áreas por Proceso")
+            col_m1, col_m2, col_m3 = st.columns(3)
+            
+            # Conteo de tipos de procesos usando la columna TIPO_PROCESO que definimos
+            est = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)])
+            mis = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)])
+            apo = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Apoyo", na=False, case=False)])
 
-    tipos = [
-        "PROCEDIMIENTO", "FORMATO", "MANUAL", "INSTRUCTIVO", "GUIA",
-        "CERTIFICADO", "PLAN DE CALIDAD", "PROGRAMA",
-        "PROTOCOLO", "REGLAMENTO"
-    ]
+            with col_m1:
+                st.markdown(f"""
+                    <div style="background-color: #002b5c; color: white; padding: 15px; border-radius: 10px; text-align: center; border-bottom: 5px solid #001a38;">
+                        <span style="font-size: 20px;">🚀 Estratégicos</span><br>
+                        <b style="font-size: 28px;">{est}</b>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_m2:
+                st.markdown(f"""
+                    <div style="background-color: #e31e24; color: white; padding: 15px; border-radius: 10px; text-align: center; border-bottom: 5px solid #a81216;">
+                        <span style="font-size: 20px;">🏥 Misionales</span><br>
+                        <b style="font-size: 28px;">{mis}</b>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_m3:
+                st.markdown(f"""
+                    <div style="background-color: #7b7b7b; color: white; padding: 15px; border-radius: 10px; text-align: center; border-bottom: 5px solid #4d4d4d;">
+                        <span style="font-size: 20px;">⚙️ Apoyo</span><br>
+                        <b style="font-size: 28px;">{apo}</b>
+                    </div>
+                """, unsafe_allow_html=True)
+        # =========================================================
 
-    df["TIPO DE DOCUMENTO"] = df["TIPO DE DOCUMENTO"].astype(str).str.upper()
-    conteo = df["TIPO DE DOCUMENTO"].value_counts().reindex(tipos, fill_value=0)
+        st.markdown("---")
+        
+        # --- PREPARACIÓN DE DATOS PARA TABLA Y GRÁFICO (TU CÓDIGO SIGUE IGUAL) ---
+        tipos_validos = [
+            "PROCEDIMIENTO", "FORMATO", "MANUAL", "INSTRUCTIVO", "GUIA",
+            "CERTIFICADO", "PLAN DE CALIDAD", "PROGRAMA",
+            "PROTOCOLO", "REGLAMENTO"
+        ]
 
-    df_tabla = pd.DataFrame({
-        "Tipo de Documento": list(conteo.index),
-        "Cantidad": list(conteo.values)
-    })
+        df["TIPO DE DOCUMENTO"] = df["TIPO DE DOCUMENTO"].astype(str).str.upper().str.strip()
+        conteo = df["TIPO DE DOCUMENTO"].value_counts().reindex(tipos_validos, fill_value=0)
 
-    total_docs = conteo.values.sum()
-    df_tabla = pd.concat([
-        df_tabla,
-        pd.DataFrame({"Tipo de Documento": ["TOTAL"], "Cantidad": [total_docs]})
-    ], ignore_index=True)
+        df_tabla = pd.DataFrame({
+            "Tipo de Documento": list(conteo.index),
+            "Cantidad": list(conteo.values)
+        })
 
-    st.write("Cantidad de documentos por tipo (incluye TOTAL):")
-    st.table(df_tabla)
+        # --- TABLA CON TOTAL ---
+        total_docs_real = int(conteo.sum())
+        fila_total = pd.DataFrame({"Tipo de Documento": ["TOTAL"], "Cantidad": [total_docs_real]})
+        df_tabla_con_total = pd.concat([df_tabla, fila_total], ignore_index=True)
+        df_tabla_con_total.index = df_tabla_con_total.index + 1
+        st.markdown("### 📋 Resumen por Tipo de Documento")
+        st.table(df_tabla_con_total)
 
-    fig = px.bar(
-       df_tabla[df_tabla["Tipo de Documento"] != "TOTAL"],
-       y="Tipo de Documento",
-       x="Cantidad",
-       orientation='h',
-       color="Tipo de Documento",
-       color_discrete_sequence=px.colors.sequential.Teal,
-       title="Documentos por Tipo",
-       text="Cantidad"   # <-- Aquí agregamos para mostrar etiquetas
-)
-    fig.update_layout(
-       template="plotly_dark",
-       showlegend=False,
-       plot_bgcolor='rgba(44, 62, 80, 1)',  # azul fondo
-       paper_bgcolor='rgba(44, 62, 80, 1)',
-       font_color='white',
-       xaxis=dict(
-         title_text="Cantidad",
-         tickfont=dict(size=18)  # tamaño etiquetas eje X
-    ),
-       yaxis=dict(
-         tickfont=dict(size=18)  # tamaño etiquetas eje Y
-    ),
-       title=dict(font=dict(size=24))  # tamaño título
-)
-
-    fig.update_traces(
-       textposition="outside",
-       cliponaxis=False,
-       textfont_size=20  # tamaño etiquetas en barras (números)
-)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
-    total_docs_real = df_tabla[df_tabla["Tipo de Documento"] != "TOTAL"]["Cantidad"].sum()
-    st.markdown(f"**Total de documentos:** {total_docs_real}")
-
-def pagina_procesos():
-    st.header("📌 Procesos")
-
-    # Cargar Excel
-    df = cargar_excel()
-    df_proced = df[df["TIPO DE DOCUMENTO"].str.upper() == "PROCEDIMIENTO"]
-
-    # Crear filtro lateral para ÁREA / PROCESO
-    with st.sidebar:
-        st.subheader("Filtrar por Área / Proceso")
-        areas = df_proced["PROCESO"].dropna().unique().tolist()
-        areas.sort()
-        areas = ["Todos"] + areas  # Añadimos opción para mostrar todos
-
-        area_seleccionada = st.selectbox("Selecciona área:", areas, index=0, key="filtro_area_proceso")
-
-    # Filtrar df_proced según área seleccionada
-    if area_seleccionada != "Todos":
-        df_filtrado = df_proced[df_proced["PROCESO"] == area_seleccionada]
-    else:
-        df_filtrado = df_proced
-
-    # Lista de títulos filtrados
-    nombres_procesos = df_filtrado["TITULO DE DOCUMENTO"].astype(str).tolist()
-
-    if not nombres_procesos:
-        st.info("No hay procesos disponibles para esta área.")
-        return
-
-    st.subheader("📋 Selecciona un proceso")
-    seleccionado = st.selectbox("Procesos disponibles:", nombres_procesos, key="selector_procesos")
-
-    st.markdown("---")
-
-    # Fila del proceso escogido
-    fila = df_filtrado[df_filtrado["TITULO DE DOCUMENTO"] == seleccionado].iloc[0]
-
-    # ======================
-    # MOSTRAR ENLACE
-    # ======================
-    st.subheader("📎 Archivo del Proceso")
-
-    enlace = fila["ABRIR"]
-
-    if enlace and str(enlace).strip() != "":
-        st.markdown(f"🔗 **Abrir archivo:** [Clic aquí]({enlace})", unsafe_allow_html=True)
-    else:
-        st.info("Este proceso no tiene enlace registrado en el Excel.")
-
-    st.markdown("---")
-
-    # ======================
-    # MOSTRAR DIAGRAMA
-    # ======================
-    st.subheader("📊 Diagrama del Proceso")
-
-    # RUTA BASE DONDE GUARDAS IMÁGENES
-    ruta_base = "DIAGRAMA"
-
-    # Listar todos los archivos reales de esa carpeta
-    try:
-        archivos = os.listdir(ruta_base)
-    except FileNotFoundError:
-        st.error("❌ La carpeta 'apps procesos/DIAGRAMA' no existe o no es accesible.")
-        return
-
-    # NORMALIZAMOS EL TEXTO DEL PROCESO (sin tildes, minúsculas)
-    def normalizar(texto):
-        return (
-            texto.lower()
-            .replace("á", "a").replace("é", "e").replace("í", "i")
-            .replace("ó", "o").replace("ú", "u")
-            .replace("ñ", "n")
-            .replace(" ", "")
+        # --- GRÁFICO DE BARRAS ---
+        fig = px.bar(
+            df_tabla, 
+            y="Tipo de Documento",
+            x="Cantidad",
+            orientation='h',
+            color="Tipo de Documento",
+            color_discrete_sequence=px.colors.qualitative.Safe, 
+            title="Distribución de Documentos",
+            text="Cantidad"
         )
 
-    nombre_normalizado = normalizar(seleccionado)
+        fig.update_layout(
+            template="plotly_white",
+            showlegend=False,
+            plot_bgcolor='rgba(0,0,0,0)', 
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="black", size=14),
+            xaxis=dict(title_text=None, tickfont=dict(color="black"), gridcolor="#eeeeee"),
+            yaxis=dict(title_text=None, tickfont=dict(color="black"), categoryorder='total ascending'),
+            title=dict(font=dict(size=22, color="black"))
+        )
 
-    # BUSCAR COINCIDENCIA ENTRE EL PROCESO Y LOS ARCHIVOS REALES
-    archivo_encontrado = None
-    for archivo in archivos:
-        if normalizar(archivo.replace(".png", "")) in nombre_normalizado:
-            archivo_encontrado = archivo
-            break
+        fig.update_traces(textposition="outside", textfont=dict(color="black", size=14), cliponaxis=False)
 
-    # Si no encontró exacto, intentar por palabra clave
-    if not archivo_encontrado:
-        if "fallec" in nombre_normalizado:
-            archivo_encontrado = "procesodefallecimiento.png"
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Mostrar imagen si hay
-    if archivo_encontrado:
-        ruta_final = os.path.join(ruta_base, archivo_encontrado)
-        st.image(ruta_final, width=1000)
-    else:
-        # Si no hay diagrama, no mostrar nada o mostrar un mensaje opcional
-        st.info("No hay diagrama disponible para este proceso.")
-
-    # ... (resto de tu código para formulario y comentarios)
+    except Exception as e:
+        st.error(f"Error al procesar los datos: {e}")
 
 
+import streamlit as st
+import pandas as pd
+import os
+import datetime
+
+def pagina_procesos():
+    st.markdown("<h1 style='color: #002b5c;'>📌 Gestión de Procesos Institucionales</h1>", unsafe_allow_html=True)
+
+    try:
+        # 1. CARGA DE DATOS
+        df = cargar_excel()
+        df_mapa = cargar_mapeo_procesos() 
+        df_proced = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() == "PROCEDIMIENTO"].copy()
+    except Exception as e:
+        st.error(f"❌ Error al cargar los datos: {e}")
+        return
+
+    # --- SIDEBAR: FILTRO POR ÁREA ---
+    with st.sidebar:
+        st.markdown("### 🏢 Configuración")
+        areas = sorted(df_proced["PROCESO"].dropna().unique().tolist())
+        area_seleccionada = st.selectbox("Área / Proceso:", ["Todos"] + areas, key="sb_proceso")
+
+    df_filtrado = df_proced if area_seleccionada == "Todos" else df_proced[df_proced["PROCESO"] == area_seleccionada]
+    nombres_procesos = df_filtrado["TITULO DE DOCUMENTO"].astype(str).tolist()
     
+    if not nombres_procesos:
+        st.info("No hay procesos disponibles.")
+        return
 
+    # --- SELECTOR DE PROCESO ---
+    seleccionado = st.selectbox("Selecciona el proceso:", nombres_procesos, key="sel_doc")
+    fila = df_filtrado[df_filtrado["TITULO DE DOCUMENTO"] == seleccionado].iloc[0]
 
+    st.markdown("---")
 
-# Formulario para nuevo comentario + fecha revisión
-    with st.form("form_nuevo_comentario"):
-     nuevo_coment = st.text_area("Agregar nuevo comentario")
-     fecha_revision = st.date_input(
-        "Selecciona la fecha para revisar este proceso",
-        min_value=datetime.date.today()
-    )
+    # ==========================================
+    # SISTEMA DE PESTAÑAS
+    # ==========================================
+    tab_doc, tab_mapa = st.tabs(["📄 Ficha del Documento", "📍 Ubicación en Mapa Estratégico"])
 
-     enviar_coment = st.form_submit_button("Enviar comentario")  # Esto debe estar dentro del `with st.form`
+    with tab_doc:
+        # --- 1. FICHA TÉCNICA ---
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.markdown(f'<div class="kpi-card"><h3>Código</h3><p>{fila.get("CODIGO", "N/A")}</p></div>', unsafe_allow_html=True)
+        with c2: st.markdown(f'<div class="kpi-card"><h3>Versión</h3><p>{fila.get("VERSIÓN", "1")}</p></div>', unsafe_allow_html=True)
+        with c3: st.markdown(f'<div class="kpi-card"><h3>Emisión</h3><p>{fila.get("EMISION", "N/A")}</p></div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="kpi-card"><h3>Vigencia</h3><p>{fila.get("VIGENCIA", "N/A")}</p></div>', unsafe_allow_html=True)
 
-     if enviar_coment and nuevo_coment.strip() != "":
-        # Aquí tu lógica para guardar el comentario y fecha
-        ...
+        # Botón PDF
+        enlace = fila.get("ABRIR", "")
+        if enlace and str(enlace).strip().startswith("http"):
+            st.markdown(f'<a href="{enlace}" target="_blank" style="text-decoration:none;"><div style="background-color:#002b5c;color:white;padding:12px;text-align:center;border-radius:8px;font-weight:bold;border-bottom:4px solid #e31e24;margin-top:10px;">📥 ABRIR PDF OFICIAL</div></a><br>', unsafe_allow_html=True)
 
-        try:
-          df_coment = cargar_comentarios()
-          if df_coment is None:
-             df_coment = pd.DataFrame(columns=["PROCESO", "COMENTARIO", "USUARIO", "FECHA", "FECHA_REVISION"])
-        except Exception as e:
-          df_coment = pd.DataFrame(columns=["PROCESO", "COMENTARIO", "USUARIO", "FECHA", "FECHA_REVISION"])
-          st.error(f"No se pudieron cargar los comentarios: {e}")
+        # --- 2. DIAGRAMA DE FLUJO ---
+        with st.expander("📊 Ver Diagrama de Flujo del Proceso", expanded=True):
+            ruta_base = "DIAGRAMA"
+            archivo_encontrado = None
 
-        if enviar_coment and nuevo_coment.strip() != "":
-            fechas_ocupadas = df_coment[
-                (df_coment["PROCESO"] == seleccionado) &
-                (pd.to_datetime(df_coment["FECHA_REVISION"]).dt.date == fecha_revision)
-            ]
+            def normalizar(texto):
+                return "".join(c for c in texto.lower() if c.isalnum())
 
-        if not fechas_ocupadas.empty:
-            st.warning("La fecha seleccionada ya está tomada para este proceso. Por favor, elige otra fecha.")
-        else:
-            nuevo_reg = {
-                "PROCESO": seleccionado,
-                "COMENTARIO": nuevo_coment.strip(),
-                "USUARIO": st.session_state["user"],
-                "FECHA": datetime.datetime.now(),
-                "FECHA_REVISION": pd.Timestamp(fecha_revision)
-            }
+            if os.path.exists(ruta_base):
+                extensiones_validas = (".png", ".jpg", ".jpeg", ".webp")
+                archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith(extensiones_validas)]
+                nombre_target = normalizar(seleccionado)
+                
+                for archivo in archivos:
+                    nombre_archivo_sin_ext = archivo.rsplit(".", 1)[0]
+                    if normalizar(nombre_archivo_sin_ext) in nombre_target:
+                        archivo_encontrado = archivo
+                        break
+                
+                if archivo_encontrado:
+                    st.image(os.path.join(ruta_base, archivo_encontrado), width=1200)
+                else:
+                    st.info("No hay un diagrama visual cargado para este proceso.")
+            else:
+                st.error("❌ Carpeta de diagramas no encontrada.")
 
-            df_coment = pd.concat([df_coment, pd.DataFrame([nuevo_reg])], ignore_index=True)
-            guardar_comentarios(df_coment)
+        # --- 3. GESTIÓN DE COMENTARIOS (DENTRO DE ESTA PESTAÑA) ---
+        st.markdown("### 💬 Programar Revisión y Comentarios")
+        with st.form("form_nuevo_comentario", clear_on_submit=True):
+            col_f1, col_f2 = st.columns([2, 1])
+            with col_f1:
+                nuevo_coment = st.text_area("Observaciones o notas de la revisión:")
+            with col_f2:
+                fecha_revision = st.date_input("Fecha de próxima revisión:", min_value=datetime.date.today())
             
-            correo_receptor = "jairft12@gmail.com"  # Tu correo donde quieres recibir la notificación
+            if st.form_submit_button("🚀 Guardar y Notificar"):
+                if nuevo_coment.strip():
+                    try:
+                        df_coment = cargar_comentarios()
+                        nuevo_reg = {
+                            "PROCESO": seleccionado,
+                            "COMENTARIO": nuevo_coment.strip(),
+                            "USUARIO": st.session_state.get("user", "Admin"),
+                            "FECHA": datetime.datetime.now(),
+                            "FECHA_REVISION": pd.Timestamp(fecha_revision)
+                        }
+                        df_coment = pd.concat([df_coment, pd.DataFrame([nuevo_reg])], ignore_index=True)
+                        guardar_comentarios(df_coment)
+                        
+                        asunto = f"🚨 REVISIÓN: {seleccionado}"
+                        cuerpo = f"Proceso: {seleccionado}\nComentario: {nuevo_coment}\nFecha: {fecha_revision}"
+                        enviar_correo_gmail("jairft12@gmail.com", asunto, cuerpo)
+                        
+                        st.success("✅ Comentario guardado y correo enviado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
+                else:
+                    st.warning("Escribe un comentario antes de guardar.")
 
-            asunto = f"Nuevo comentario en proceso: {seleccionado}"
-            cuerpo = f"""
-            Usuario: {st.session_state['user']}
-            Proceso: {seleccionado}
-            Comentario: {nuevo_coment.strip()} 
-            Fecha para revisión: {fecha_revision}
-            """
+    with tab_mapa:
+        # --- 4. MAPA ESTRATÉGICO (SIN GRÁFICAS, SOLO INFORMACIÓN) ---
+        if df_mapa is not None:
+            # KPIs del Mapa
+            ct1, ct2, ct3 = st.columns(3)
+            with ct1: st.markdown(f'<div class="kpi-card"><h3>Total Áreas</h3><p>{len(df_mapa)}</p></div>', unsafe_allow_html=True)
+            with ct2: 
+                est_n = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)])
+                st.markdown(f'<div class="kpi-card"><h3>Estratégicos</h3><p>{est_n}</p></div>', unsafe_allow_html=True)
+            with ct3: 
+                mis_n = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)])
+                st.markdown(f'<div class="kpi-card"><h3>Misionales</h3><p>{mis_n}</p></div>', unsafe_allow_html=True)
 
-            enviado = False
-            try:
-              enviado = enviar_correo_gmail(correo_receptor, asunto, cuerpo)
-              if enviado:
-                 st.success("Comentario guardado y correo enviado.")
-              else:
-                 st.error("Comentario guardado pero fallo el envío del correo.")
-            except Exception as e:
-                 st.error(f"Comentario guardado pero fallo el envío del correo. Error: {e}")
+            st.markdown("---")
 
-            st.success("Comentario y fecha de revisión guardados.")
-            rerun()
+            # Columnas de Responsables (Incluye Áreas y Líderes con nombre completo)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("<h3 style='color: #002b5c;'>🚀 Estratégicos</h3>", unsafe_allow_html=True)
+                df_est = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)]
+                for _, r in df_est.iterrows():
+                    resaltado = "border: 2px solid #002b5c; box-shadow: 0px 0px 8px rgba(0,43,92,0.2);" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f"""
+                        <div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
+                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+                        </div>
+                    """, unsafe_allow_html=True)
 
+            with col2:
+                st.markdown("<h3 style='color: #e31e24;'>🏥 Misionales</h3>", unsafe_allow_html=True)
+                df_mis = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)]
+                for _, r in df_mis.iterrows():
+                    resaltado = "border: 2px solid #e31e24; box-shadow: 0px 0px 8px rgba(227,30,36,0.2);" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f"""
+                        <div style="border-left: 5px solid #e31e24; background: #fff5f5; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
+                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+                        </div>
+                    """, unsafe_allow_html=True)
 
-   
+            with col3:
+                st.markdown("<h3 style='color: #7b7b7b;'>⚙️ Apoyo</h3>", unsafe_allow_html=True)
+                df_apo = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Apoyo", na=False, case=False)]
+                for _, r in df_apo.iterrows():
+                    resaltado = "border: 2px solid #7b7b7b;" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f"""
+                        <div style="border-left: 5px solid #7b7b7b; background: #f1f1f1; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
+                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+                        </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("No se pudo cargar la información del Mapa Estratégico.")
   
 def pagina_documentos():
-    st.title("📄 Documentos")
-
+    st.markdown("<h1 style='color: #002b5c;'>📄 Repositorio de Documentos</h1>", unsafe_allow_html=True)
+    
     try:
         df = cargar_excel()
     except FileNotFoundError:
-        st.error("No se encontró el archivo.")
+        st.error("No se encontró el archivo 'Bitacora.xlsx'.")
         return
 
-    # Excluir procedimientos
-    df = df[df["TIPO DE DOCUMENTO"].str.upper() != "PROCEDIMIENTO"]
-
-    # Lista de procesos/áreas para filtro
+    # --- FILTROS ---
+    df = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() != "PROCEDIMIENTO"]
+    
     procesos = sorted(df["PROCESO"].dropna().unique())
-    opciones_proceso = ["Todos"] + procesos
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        proceso_seleccionado = st.selectbox("📍 Filtrar por Proceso", ["Todos"] + procesos)
+    with col2:
+        busqueda = st.text_input("🔍 Buscar por palabra clave (Título, Código, Responsable...)")
 
-    # Selector en sidebar
-    proceso_seleccionado = st.sidebar.selectbox("Filtrar por proceso / área", opciones_proceso)
-
-    # Filtro por proceso
+    # Aplicar Filtros
     if proceso_seleccionado != "Todos":
         df = df[df["PROCESO"] == proceso_seleccionado]
-
-    # Buscador en sidebar también (opcional)
-    busqueda = st.sidebar.text_input("🔍 Buscar documento por palabra")
-
+    
     if busqueda:
-        filtro = df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)
-        df_filtrado = df[filtro]
-    else:
-        df_filtrado = df
+        # Filtrar en todo el dataframe por la palabra clave
+        df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
 
-    # Formatear columna ABRIR con links
-    df_filtrado["ABRIR"] = df_filtrado["ABRIR"].apply(
-        lambda x: f'<a href="{x}" target="_blank">Abrir</a>' if pd.notna(x) and x != "" else ""
-    )
+    # --- PREPARACIÓN DE DATOS ---
+    df_mostrar = df.copy()
+    
+    # Limpiamos nombres de columnas para evitar errores de espacios invisibles
+    df_mostrar.columns = df_mostrar.columns.str.strip()
 
-    columnas_mostrar = [
-        "CODIGO", "TIPO DE DOCUMENTO", "VERSIÓN", "EMISION", "VIGENCIA",
-        "TITULO DE DOCUMENTO", "PROCESO", "SUBPROCESO", "RESPONSABLE",
-        "ABRIR"
+    # Convertimos los links en "Botones"
+    if "ABRIR" in df_mostrar.columns:
+        df_mostrar["ABRIR"] = df_mostrar["ABRIR"].apply(
+            lambda x: f'<a href="{x}" target="_blank" class="btn-abrir">Ver Documento</a>' 
+            if pd.notna(x) and str(x).startswith("http") 
+            else '<span style="color:gray">No disponible</span>'
+        )
+
+    # Definimos las columnas que queremos ver (Basado en tu lista confirmada)
+    columnas_a_ver = [
+        'CODIGO', 'TIPO DE DOCUMENTO', 'VERSIÓN', 'EMISION', 
+        'VIGENCIA', 'TITULO DE DOCUMENTO', 'PROCESO', 'ABRIR'
     ]
+    
+    # Filtro de seguridad: Solo usamos las que existen en este archivo
+    columnas_finales = [col for col in columnas_a_ver if col in df_mostrar.columns]
 
-    st.write(df_filtrado[columnas_mostrar].to_html(escape=False, index=False), unsafe_allow_html=True)
+    # --- ESTILO CSS ---
+    st.markdown("""
+    <style>
+        .table-container {
+            height: 600px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .tabla-viva {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .tabla-viva thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #002b5c !important;
+            color: #FFFFFF !important;
+            padding: 15px !important;
+            border-bottom: 2px solid #001a38;
+        }
+        .tabla-viva td {
+            white-space: normal;
+            word-wrap: break-word;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            color: #000000 !important; /* Asegura texto negro en la tabla */
+        }
+        .btn-abrir {
+            background-color: #002b5c;
+            color: white !important;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            display: inline-block;
+        }
+        .btn-abrir:hover { background-color: #e31e24; }
+    </style>
+    """, unsafe_allow_html=True)
 
+    # --- RENDERIZADO DE TABLA ---
+    if len(columnas_finales) > 0:
+        html_tabla = df_mostrar[columnas_finales].to_html(escape=False, index=False, classes='tabla-viva')
+        st.markdown(f'<div class="table-container">{html_tabla}</div>', unsafe_allow_html=True)
+    else:
+        st.error("⚠️ No se encontraron las columnas necesarias en el Excel.")
+        st.write("Columnas detectadas:", df_mostrar.columns.tolist())
 
 def pagina_admin():
     st.header("📄 Administración")
@@ -1006,6 +1113,88 @@ def pagina_analisis():
     aplicar_formato_figura(fig4, horizontal=True)
     st.plotly_chart(fig4, use_container_width=True)
 
+# ==========================================
+# FUNCIÓN PARA CARGAR LA HOJA ESPECÍFICA
+# ==========================================
+def cargar_mapeo_procesos():
+    archivo = "procesos/Tipo de Procesos por Responsable.xlsx"
+    try:
+        if not os.path.exists(archivo):
+            st.error(f"⚠️ No se encuentra el archivo en la ruta: {archivo}")
+            return None
+        df = pd.read_excel(archivo, sheet_name="TipoProceso", skiprows=5)
+         #2. Eliminamos columnas que Excel a veces carga vacías a la izquierda
+         #Nos quedamos solo con las columnas que tienen datos
+        df = df.dropna(how='all', axis=1)
+        
+        #Renombramos según el orden de tus datos: AREA, RESPONSABLE, TIPO
+        df.columns = ["AREA", "RESPONSABLE", "TIPO_PROCESO"] + list(df.columns[3:])
+        
+        # Quitamos filas vacías y la fila de TOTAL
+        df = df.dropna(subset=["AREA"])
+        df = df[df["AREA"].astype(str).str.upper() != "TOTAL"]
+        
+        return df
+    except Exception as e:
+        st.error(f"❌ Error al leer la hoja 'TipoProceso': {e}")
+        return None
+# ==========================================
+# VISTA DE LA PÁGINA MAPA ESTRATÉGICO
+# ==========================================
+#def pagina_mapa_estrategico():
+  #  st.markdown("<h1 style='color: #002b5c;'>📍 Mapa Estratégico de Procesos</h1>", unsafe_allow_html=True)
+    
+    # Aquí es donde llamamos a la función de arriba
+   # df_mapa = cargar_mapeo_procesos()
+    
+    #if df_mapa is not None:
+        # --- TARJETAS KPI (Usando tu estilo kpi-card) ---
+     #   total_areas = len(df_mapa)
+      #  c1, c2, c3 = st.columns(3)
+        
+       # with c1:
+        #    st.markdown(f'<div class="kpi-card"><h3>Total Áreas</h3><p>{total_areas}</p></div>', unsafe_allow_html=True)
+        #with c2:
+         #   est = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)])
+          #  st.markdown(f'<div class="kpi-card"><h3>Estratégicos</h3><p>{est}</p></div>', unsafe_allow_html=True)
+        #with c3:
+         #   mis = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)])
+          #  st.markdown(f'<div class="kpi-card"><h3>Misionales</h3><p>{mis}</p></div>', unsafe_allow_html=True)
+
+        #st.markdown("---")
+
+        # --- SECCIONES POR TIPO ---
+        #col1, col2, col3 = st.columns(3)
+        
+        #with col1:
+         #   st.markdown("<h3 style='color: #002b5c;'>🚀 Estratégicos</h3>", unsafe_allow_html=True)
+          #  df_est = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)]
+           # for _, r in df_est.iterrows():
+            #    st.markdown(f"""
+             #       <div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
+              #          <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+               #     </div>
+                #""", unsafe_allow_html=True)
+
+        #with col2:
+         #   st.markdown("<h3 style='color: #e31e24;'>🏥 Misionales</h3>", unsafe_allow_html=True)
+          #  df_mis = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)]
+           # for _, r in df_mis.iterrows():
+            #    st.markdown(f"""
+             #       <div style="border-left: 5px solid #e31e24; background: #fff5f5; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
+              #          <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+               #     </div>
+                #""", unsafe_allow_html=True)
+
+      #  with col3:
+       #     st.markdown("<h3 style='color: #7b7b7b;'>⚙️ Apoyo</h3>", unsafe_allow_html=True)
+        #    df_apo = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Apoyo", na=False, case=False)]
+         #   for _, r in df_apo.iterrows():
+          #      st.markdown(f"""
+           #         <div style="border-left: 5px solid #7b7b7b; background: #f1f1f1; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
+            #            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
+             #       </div>
+              #  """, unsafe_allow_html=True)
 # ============================
 # MOSTRAR PÁGINA SEGÚN SELECCIÓN
 # ============================
@@ -1015,13 +1204,14 @@ pagina_activa = render_sidebar()
 if pagina_activa == "Inicio":
     pagina_inicio()
 elif pagina_activa == "Procesos":
-    pagina_procesos()
+    pagina_procesos()    
 elif pagina_activa == "Documentos":
     pagina_documentos()
+
 elif pagina_activa == "Administración":
     if st.session_state.get("role") == "admin":
         pagina_admin()
     else:
         st.error("No tienes permisos para acceder a esta sección.")
-elif pagina_activa == "Análisis":
+elif pagina_activa == "Análisis de Calidad":
     pagina_analisis()

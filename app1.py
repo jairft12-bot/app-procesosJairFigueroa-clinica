@@ -1215,3 +1215,4 @@ elif pagina_activa == "Administración":
         st.error("No tienes permisos para acceder a esta sección.")
 elif pagina_activa == "Análisis de Calidad":
     pagina_analisis()
+# Cambio para actualizar

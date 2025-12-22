@@ -20,53 +20,55 @@ st.set_page_config(page_title="Gestión Viva 1A", layout="wide")
 
 st.markdown("""
 <style>
-            
-            /* Color del título del Expander cuando está cerrado/abierto */
-    .st-emotion-cache-p5msec p {
-        color: #002b5c !important; /* Azul para el texto */
-        font-weight: bold !important;
-    }
-
-    /* Cambiar el fondo del expander cuando pasas el mouse o está abierto */
-    details[open] summary, details summary:hover {
-        background-color: #002b5c !important; /* Fondo Azul */
-        color: white !important; /* Texto Blanco */
-        border-radius: 5px;
-        transition: 0.3s;
-    }
-
-    /* Asegurar que la flechita y el texto dentro del resumen sean blancos al abrir */
-    details[open] summary svg, details[open] summary p {
-        fill: white !important;
-        color: white !important;
-    }
-    /* 1. FONDO Y TEXTO GENERAL */
+    /* 1. CONFIGURACIÓN GLOBAL DEL CUERPO (MAIN) */
     .stApp { 
         background-color: #FFFFFF; 
     }
 
-    /* Forzamos negro solo en textos de contenido para no dañar iconos de sistema */
-    .stApp h1, .stApp h2, .stApp h3, .stApp p, .stApp label, .stMarkdown {
+    /* Forzamos negro SOLO en el contenido principal para no afectar al sidebar */
+    [data-testid="stMain"] h1, [data-testid="stMain"] h2, [data-testid="stMain"] h3, 
+    [data-testid="stMain"] p, [data-testid="stMain"] label, [data-testid="stMain"] .stMarkdown {
         color: #000000 !important;
     }
 
-    /* 2. SIDEBAR (AZUL VIVA 1A) */
+    /* 2. CONFIGURACIÓN DEL SIDEBAR */
     [data-testid="stSidebar"] { 
-        background-color: #000000 !important; 
-        color: #FFFFFF !important;
-    }
-    [data-testid="stSidebar"] * { 
-        color: #FFFFFF !important; 
+        background-color: #000000 !important; /* Fondo Negro (o el azul que prefieras) */
     }
 
-    /* 3. ARREGLO PARA DESPLEGABLES Y MENÚS (Selectbox / Multiselect) */
-    /* Esto hace que el texto dentro de los cuadros de selección sea visible */
+    /* Forzamos BLANCO para todo lo que esté dentro del Sidebar (Labels, Sliders, Textos) */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] .stMarkdown p {
+        color: #FFFFFF !important;
+    }
+
+    /* 3. EXPANDER (AZUL VIVA 1A) */
+    .st-emotion-cache-p5msec p {
+        color: #002b5c !important; 
+        font-weight: bold !important;
+    }
+
+    details[open] summary, details summary:hover {
+        background-color: #002b5c !important; 
+        color: white !important; 
+        border-radius: 5px;
+        transition: 0.3s;
+    }
+
+    details[open] summary svg, details[open] summary p {
+        fill: white !important;
+        color: white !important;
+    }
+
+    /* 4. SELECTBOX / MULTISELECT */
     div[data-baseweb="select"] > div {
         background-color: #f0f2f6 !important;
         color: #000000 !important;
     }
     
-    /* 4. TABLAS PROFESIONALES (Títulos y Números en Azul/Blanco) */
+    /* 5. TABLAS PROFESIONALES */
     .stTable {
         border: 1px solid #e0e0e0;
         border-radius: 8px;
@@ -74,8 +76,6 @@ st.markdown("""
         background-color: white;
     }
 
-    /* FORZAR BLANCO EN ENCABEZADOS (Títulos y Números laterales) */
-    /* El '*' le dice que pinte de blanco CUALQUIER texto dentro de esas celdas */
     .stTable thead tr th, 
     .stTable thead tr th *, 
     .stTable tbody tr th, 
@@ -86,25 +86,24 @@ st.markdown("""
         text-align: center !important;
     }
 
-    /* CUERPO DE LA TABLA (Celdas de datos en negro) */
     .stTable tbody tr td, 
     .stTable tbody tr td * {
-        color: #000000 !important; /* TEXTO NEGRO PARA LOS DATOS */
+        color: #000000 !important;
         border-bottom: 1px solid #eeeeee !important;
         background-color: white !important;
     }
 
-    /* EFECTO CEBRA PARA LAS FILAS DE DATOS */
     .stTable tbody tr:nth-child(even) td {
         background-color: #f9f9f9 !important;
     }
-    /* 5. ICONOS DE SISTEMA (Flechas, Menú superior) */
-    /* Esto asegura que los botones de "Run" y el menú de 3 rayas se vean */
-    .stActionButton, .stApp [data-testid="stHeader"] {
+
+    /* 6. ICONOS DE SISTEMA Y HEADER */
+    .stActionButton, [data-testid="stHeader"] {
         background-color: rgba(255, 255, 255, 0.5);
         color: #000000 !important;
     }
-            /* 4. TARJETAS KPI */
+
+    /* 7. TARJETAS KPI */
     .kpi-card {
         background-color: #ffffff;
         padding: 20px;

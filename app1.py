@@ -1,13 +1,19 @@
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+# ... el resto de tus imports ...
 import os
 import datetime
 import smtplib
 import unicodedata
-import streamlit as st
+
 import pandas as pd
 import plotly.express as px
 import streamlit.components.v1 as components
 import time
-from streamlit_gsheets import GSheetsConnection
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header

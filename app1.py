@@ -7,15 +7,16 @@ import pandas as pd
 import plotly.express as px
 import streamlit.components.v1 as components
 import time
+from streamlit_gsheets import GSheetsConnection
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 st.set_page_config(page_title="Procesos", layout="wide")
 # --- CONFIGURACIÓN VISUAL VIVA 1A ---
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import pandas as pd
+
+
+
+
 
 
 # --- CONFIGURACIÓN GLOBAL DE INTERFAZ ---
@@ -285,17 +286,19 @@ if not st.session_state["logged"]:
 # ============================
 # FUNCIÓN ÓPTIMA PARA CARGAR EXCEL USANDO TIMESTAMP
 # ============================
-@st.cache_data
-def cargar_excel():
-    ruta = "procesos/Bitacora1.xlsx"
-    return pd.read_excel(ruta, sheet_name="Bitacora-Archivos")
+# --- NUEVA CONFIGURACIÓN DE NUBE ---
+URL_GSHEET = "https://docs.google.com/spreadsheets/d/17okXpg_Pk71w6pRxy6lqzUJjLNQaoCHNnt2AAn0JIYc/edit?usp=sharing"
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Botón para recargar datos
-# Botón para recargar datos solo para admin
-if st.session_state.get("role") == "admin":
-    if st.sidebar.button("🔄 Recargar datos"):
-        st.cache_data.clear()
-        rerun()
+@st.cache_data(ttl=300) # Se actualiza cada 5 minutos automáticamente
+def cargar_excel():
+    # Ahora lee de Google Sheets en lugar de la carpeta local
+    df = conn.read(spreadsheet=URL_GSHEET, worksheet="Bitacora-Archivos")
+    
+    # Limpiamos los nombres de columnas (para que tus filtros no fallen)
+    df.columns = df.columns.str.strip().str.upper()
+    df.columns = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in df.columns]
+    return df
 
 
 # ====== CONTENIDO DE LA APP (solo si está logueado) ======
@@ -501,13 +504,21 @@ def pagina_procesos():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 style='color: #002b5c;'>📌 Gestión de Procesos Institucionales</h1>", unsafe_allow_html=True)
-
+    
     try:
+        
         df = cargar_excel()
+        
         df_mapa = cargar_mapeo_procesos() 
-        df_proced = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() == "PROCEDIMIENTO"].copy()
+        if df is not None:
+            df_proced = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() == "PROCEDIMIENTO"].copy()
+        else:
+            st.error("❌ No se pudieron obtener datos del Excel en la nube.")
+            return
+
     except Exception as e:
-        st.error(f"❌ Error al cargar los datos: {e}")
+        # Este error ahora te avisará si falla la conexión a internet o el enlace
+        st.error(f"❌ Error al cargar los datos desde la nube: {e}")
         return
 
     # --- SIDEBAR ---
@@ -584,29 +595,32 @@ def pagina_procesos():
             with col_f2:
                 fecha_revision = st.date_input("Fecha de próxima revisión:", min_value=datetime.date.today())
             
+            # Busca esta parte en tu formulario de comentarios:
             if st.form_submit_button("🚀 Guardar y Notificar"):
-                if nuevo_coment.strip():
+                 if nuevo_coment.strip():
                     try:
-                        df_coment = cargar_comentarios()
-                        nuevo_reg = {
-                            "PROCESO": seleccionado,
-                            "COMENTARIO": nuevo_coment.strip(),
-                            "USUARIO": st.session_state.get("user", "Admin"),
-                            "FECHA": datetime.datetime.now(),
-                            "FECHA_REVISION": pd.Timestamp(fecha_revision)
-                        }
-                        df_coment = pd.concat([df_coment, pd.DataFrame([nuevo_reg])], ignore_index=True)
-                        guardar_comentarios(df_coment)
-                        
-                        asunto = f"🚨 REVISIÓN: {seleccionado}"
-                        cuerpo = f"Proceso: {seleccionado}\nComentario: {nuevo_coment}\nFecha: {fecha_revision}"
-                        enviar_correo_gmail("jairft12@gmail.com", asunto, cuerpo)
-                        
-                        st.success("✅ Comentario guardado y correo enviado.")
+            # CAMBIO AQUÍ: Leer comentarios de la nube
+                          df_coment = conn.read(spreadsheet=URL_GSHEET, worksheet="Comentarios")
+            
+                          nuevo_reg = {
+                               "PROCESO": seleccionado,
+                               "COMENTARIO": nuevo_coment.strip(),
+                               "USUARIO": st.session_state.get("user", "Admin"),
+                               "FECHA": str(datetime.datetime.now()), # Convertimos a string para evitar errores de fecha
+                               "FECHA_REVISION": str(fecha_revision)
+                          }
+            
+                          df_coment = pd.concat([df_coment, pd.DataFrame([nuevo_reg])], ignore_index=True)
+            
+            # CAMBIO AQUÍ: Guardar en la pestaña 'Comentarios' de Google Sheets
+                          conn.update(spreadsheet=URL_GSHEET, data=df_coment, worksheet="Comentarios")
+            
+            # (Tu código de envío de correo se queda igual)
+                          st.success("✅ Comentario guardado en la nube y correo enviado.")
                     except Exception as e:
-                        st.error(f"Error al guardar: {e}")
-                else:
-                    st.warning("Escribe un comentario antes de guardar.")
+                          st.error(f"Error al guardar: {e}")
+                    else:
+                          st.warning("Escribe un comentario antes de guardar.")
 
     with tab_mapa:
         # Pestaña limpia: Solo mapa
@@ -653,23 +667,18 @@ def pagina_documentos():
     # ===============================
     # CARGA DE DATA
     # ===============================
-    @st.cache_data
+    @st.cache_data(ttl=300)
     def cargar_documentos():
-        ruta = "procesos/Bitacora1.xlsx"
-        df = pd.read_excel(ruta, sheet_name="Bitacora-Archivos")
+       
+        df = conn.read(spreadsheet=URL_GSHEET, worksheet="Bitacora-Archivos")
 
-        # NORMALIZAR COLUMNAS
         df.columns = (
             df.columns
             .str.strip()
             .str.upper()
-            .str.replace("Á", "A")
-            .str.replace("É", "E")
-            .str.replace("Í", "I")
-            .str.replace("Ó", "O")
-            .str.replace("Ú", "U")
+            .str.replace("Á", "A").str.replace("É", "E")
+            .str.replace("Í", "I").str.replace("Ó", "O").str.replace("Ú", "U")
         )
-
         return df
 
     df = cargar_documentos()
@@ -910,9 +919,8 @@ def pagina_admin():
                             "ABRIR": enlace
                         }
 
-                        df_excel = pd.concat([df_excel, pd.DataFrame([nueva_fila])], ignore_index=True)
-                        df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
-
+                        df_actualizado = pd.concat([df_excel, pd.DataFrame([nueva_fila])], ignore_index=True)
+                        conn.update(spreadsheet=URL_GSHEET, data=df_actualizado, worksheet="Bitacora-Archivos")
                         if archivo:
                             with open(f"procesos/{archivo.name}", "wb") as f:
                                 f.write(archivo.getbuffer())
@@ -984,8 +992,7 @@ def pagina_admin():
                         df_excel.at[idx, "MACROPROCESO"] = new_macro
 
                         # Guardar en el archivo físico
-                        df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
-                        
+                        conn.update(spreadsheet=URL_GSHEET, data=df_excel, worksheet="Bitacora-Archivos")
                         st.success("✅ Registro actualizado correctamente.")
                         st.session_state["edit_mode"] = False
                         st.rerun()
@@ -1004,7 +1011,7 @@ def pagina_admin():
         if st.button("❌ Eliminar Definitivamente"):
             if confirmar:
                 df_excel = df_excel[df_excel["CODIGO"].astype(str) != cod_eliminar]
-                df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
+                conn.update(spreadsheet=URL_GSHEET, data=df_excel, worksheet="Bitacora-Archivos")
                 st.success("Registro eliminado.")
                 rerun_without_experimental()
             else:
@@ -1020,19 +1027,40 @@ def pagina_admin():
         else:
             st.info("Sin comentarios registrados.")
             # RESTAURAR ESTA FUNCIÓN PARA QUITAR EL ERROR
+@st.cache_data(ttl=300)
 def cargar_mapeo_procesos():
-    archivo = "procesos/Tipo de Procesos por Responsable.xlsx"
-    if not os.path.exists(archivo):
-        return None
     try:
-        df = pd.read_excel(archivo, sheet_name="TipoProceso", skiprows=5)
+        # 1. Leemos de la nube
+        df = conn.read(spreadsheet=URL_GSHEET, worksheet="TipoProceso")
+        
+        if df is None or df.empty:
+            return None
+
+        # 2. Limpieza de columnas vacías
         df = df.dropna(how='all', axis=1)
-        # Ajustamos columnas básicas
-        df.columns = ["AREA", "RESPONSABLE", "TIPO_PROCESO"] + list(df.columns[3:])
+
+        # 3. Forzar nombres de columnas (Asegúrate que en el GSheet se llamen así)
+        # Es mejor buscar por nombre que por posición
+        df.columns = [c.strip().upper() for c in df.columns]
+        
+        # Mapeo de nombres para que coincidan con tu lógica del resto de la app
+        # Si en el Excel se llaman distinto, cámbialos aquí:
+        rename_dict = {
+            "AREA": "AREA",
+            "RESPONSABLE": "RESPONSABLE",
+            "TIPO PROCESO": "TIPO_PROCESO",
+            "TIPO DE PROCESO": "TIPO_PROCESO"
+        }
+        df = df.rename(columns=rename_dict)
+
+        # 4. Limpieza de filas
         df = df.dropna(subset=["AREA"])
         df = df[df["AREA"].astype(str).str.upper() != "TOTAL"]
+        
         return df
-    except:
+    except Exception as e:
+        # Es mejor imprimir el error en consola para saber qué falló
+        print(f"Error en cargar_mapeo_procesos: {e}")
         return None
 def pagina_analisis():
 

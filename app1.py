@@ -19,7 +19,19 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 st.set_page_config(page_title="Procesos", layout="wide")
 # --- CONFIGURACIÓN VISUAL VIVA 1A ---
-
+# DEJA TU FUNCIÓN AQUÍ (AL PRINCIPIO)
+def normalizar(texto):
+    """Limpia tildes y espacios extra, pero mantiene mayúsculas y espacios entre palabras."""
+    if not texto: 
+        return ""
+    # Convertimos a string y quitamos espacios a los lados
+    texto = str(texto).strip().upper()
+    # Quitamos tildes
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    return texto # Ya no usamos isalnum() para no pegar las palabras
 
 
 
@@ -298,13 +310,17 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=300) # Se actualiza cada 5 minutos automáticamente
 def cargar_excel():
-    # Ahora lee de Google Sheets en lugar de la carpeta local
-    df = conn.read(spreadsheet=URL_GSHEET, worksheet="Bitacora-Archivos")
-    
-    # Limpiamos los nombres de columnas (para que tus filtros no fallen)
-    df.columns = df.columns.str.strip().str.upper()
-    df.columns = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in df.columns]
-    return df
+    # URL directa que fuerza la descarga en CSV (evita el error 400)
+    url = "https://docs.google.com/spreadsheets/d/17okXpg_Pk71w6pRxy6lqzUJjLNQaoCHNnt2AAn0JIYc/gviz/tq?tqx=out:csv&sheet=Bitacora-Archivos"
+    try:
+       
+        df = pd.read_csv(url)
+        # Limpiar espacios en los nombres de columnas para que no fallen los filtros
+        df.columns = [normalizar(col) for col in df.columns]
+        return df
+    except Exception as e:
+        st.error(f"Error en Análisis: {e}")
+        return None
 
 
 # ====== CONTENIDO DE LA APP (solo si está logueado) ======
@@ -322,7 +338,15 @@ def render_sidebar():
     st.sidebar.write(f"Rol: **{st.session_state['role']}**")
     st.sidebar.markdown("---")
     st.write("\n" * 30)  # Ajusta el número para mover más arriba o abajo
-
+     # --- AQUÍ VA EL BOTÓN DE ADMIN QUE BUSCABAS ---
+    if st.session_state.get("role") == "admin":
+        st.sidebar.write("⚙️ **Configuración de Admin**")
+        if st.sidebar.button("🔄 Sincronizar / Limpiar Caché", key="btn_admin_sync"):
+            st.cache_data.clear()  # Borra la memoria de los Excels cargados
+            st.sidebar.success("¡Datos sincronizados!")
+            time.sleep(1)          # Pausa breve para ver el mensaje
+            st.rerun()             # Recarga la página
+        st.sidebar.markdown("---")
     st.image("logo/logo2.jpeg", width=150)
 
     options = ["Inicio", "Procesos", "Documentos", "Análisis de Calidad"]
@@ -469,16 +493,7 @@ def pagina_inicio():
         st.error(f"Error al procesar los datos: {e}")
 
 
-def normalizar(texto):
-    """Limpia el texto: minúsculas, quita tildes, espacios y símbolos."""
-    if not texto: 
-        return ""
-    texto = texto.lower()
-    texto = ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
-    )
-    return "".join(c for c in texto if c.isalnum())
+
 
 def pagina_procesos():
     # --- ESTILOS CSS REFORZADOS (Buscador blanco, texto negro) ---
@@ -576,21 +591,34 @@ def pagina_procesos():
         if enlace and str(enlace).strip().startswith("http"):
             st.markdown(f'<a href="{enlace}" target="_blank" style="text-decoration:none;"><div style="background-color:#002b5c;color:white;padding:12px;text-align:center;border-radius:8px;font-weight:bold;border-bottom:4px solid #e31e24;margin-top:10px;">📥 ABRIR PDF OFICIAL</div></a><br>', unsafe_allow_html=True)
 
-        # --- 2. DIAGRAMA DE FLUJO ---
+       # --- 2. DIAGRAMA DE FLUJO ---
         with st.expander("📊 Ver Diagrama de Flujo del Proceso", expanded=True):
             ruta_base = "DIAGRAMA"
             archivo_encontrado = None
+            
             if os.path.exists(ruta_base):
+                # Obtenemos lista de imágenes
                 archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
+                
+                # NORMALIZAMOS el nombre seleccionado para que coincida con los archivos
                 nombre_target = normalizar(seleccionado)
+                
                 for archivo in archivos:
-                    if normalizar(archivo.rsplit(".", 1)[0]) in nombre_target:
+                    # Quitamos la extensión al archivo y lo normalizamos para comparar
+                    nombre_archivo_sin_ext = normalizar(archivo.rsplit(".", 1)[0])
+                    
+                    # Si el nombre del archivo está contenido en el proceso o viceversa
+                    if nombre_archivo_sin_ext in nombre_target or nombre_target in nombre_archivo_sin_ext:
                         archivo_encontrado = archivo
                         break
+                
                 if archivo_encontrado:
-                    if archivo_encontrado:
-    # Cambia el 500 por el número de píxeles que desees (ej: 400, 700, 900)
-                     st.image(os.path.join(ruta_base, archivo_encontrado), width=1300)
+                    # Usamos os.path.join para evitar errores de ruta en la web
+                    st.image(os.path.join(ruta_base, archivo_encontrado), width=1300)
+                else:
+                    st.warning(f"No se encontró un diagrama para: {seleccionado}")
+            else:
+                st.error("La carpeta 'DIAGRAMA' no existe en el servidor.")
 
         # --- 3. GESTIÓN DE COMENTARIOS (RESTAURADO) ---
         st.markdown("### 💬 Programar Revisión y Comentarios")
@@ -675,39 +703,45 @@ def pagina_documentos():
     # ===============================
     @st.cache_data(ttl=300)
     def cargar_documentos():
-       
-        df = conn.read(spreadsheet=URL_GSHEET, worksheet="Bitacora-Archivos")
-
-        df.columns = (
-            df.columns
-            .str.strip()
-            .str.upper()
-            .str.replace("Á", "A").str.replace("É", "E")
-            .str.replace("Í", "I").str.replace("Ó", "O").str.replace("Ú", "U")
-        )
-        return df
-
+      url = "https://docs.google.com/spreadsheets/d/17okXpg_Pk71w6pRxy6lqzUJjLNQaoCHNnt2AAn0JIYc/gviz/tq?tqx=out:csv&sheet=Bitacora-Archivos"
+      try:
+        
+          df = pd.read_csv(url)
+          df.columns = [
+                 ''.join(
+                    c for c in unicodedata.normalize('NFD', str(col).strip().upper())
+                     if unicodedata.category(c) != 'Mn'
+                 ) for col in df.columns
+            ]
+          return df
+      except Exception as e:
+          st.error(f"Error en Documentos: {e}")
+          return None
+        
     df = cargar_documentos()
 
     # ===============================
     # COLUMNAS A MOSTRAR
     # ===============================
     columnas = [
-        "CODIGO",
+       "CODIGO",
         "TIPO DE DOCUMENTO",
-        "VERSION",
-        "EMISION",
+        "VERSION", # Sin tilde
+        "EMISION", # Sin tilde
         "VIGENCIA",
-        "TITULO DE DOCUMENTO",
+        "TITULO DE DOCUMENTO", # Sin tilde
         "PROCESO",
         "SUBPROCESO",
         "RESPONSABLE",
         "ABRIR"
     ]
 
+    # Verificación de seguridad
     faltantes = [c for c in columnas if c not in df.columns]
     if faltantes:
         st.error(f"Faltan columnas en el Excel: {', '.join(faltantes)}")
+        # Mostramos las que sí encontró para ayudarte a depurar
+        st.write("Columnas detectadas en tu Excel:", list(df.columns))
         st.stop()
 
     # ===============================
@@ -807,26 +841,19 @@ def pagina_documentos():
         tabla += f"<td>{row['PROCESO']}</td>"
         tabla += f"<td>{row['SUBPROCESO']}</td>"
         tabla += f"<td>{row['RESPONSABLE']}</td>"
-
+        
         enlace = row["ABRIR"]
-        if isinstance(enlace, str) and enlace.strip():
-            boton = f"<a href='{enlace}' target='_blank'>Abrir</a>"
-        else:
-            boton = "—"
-
+        boton = f"<a href='{enlace}' target='_blank'>Abrir</a>" if isinstance(enlace, str) and enlace.strip() else "—"
         tabla += f"<td>{boton}</td>"
-        tabla += "</tr>"
+        tabla += "</tr>" 
 
     tabla += "</table></div>"
-
+    import streamlit.components.v1 as components
+    components.html(tabla, height=700, scrolling=True)
     # ===============================
     # MOSTRAR (SIN ERROR removeChild)
     # ===============================
-    components.html(
-        tabla,
-        height=700,
-        scrolling=True
-    )
+  
 
 
 

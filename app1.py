@@ -234,7 +234,7 @@ def login():
 if "logged" not in st.session_state:
     st.session_state.logged = False
 
-def detector_inactividad(minutos=1):
+def detector_inactividad(minutos=15):
     milisegundos = minutos * 60 * 1000
     # Este script detecta clics, movimiento de mouse y teclas
     # Si pasa el tiempo, busca el botón de "Cerrar sesión" y le hace clic automáticamente
@@ -925,8 +925,7 @@ def pagina_admin():
                 if st.button("Cancelar"):
                     st.session_state["formulario_activo"] = False
                     rerun_without_experimental()
-
-    # ====== TAB 1: EDITAR REGISTRO ======
+# ====== TAB 1: EDITAR REGISTRO ======
     with tabs[1]:
         st.markdown("### ✏️ Editar Registro Existente")
         lista_codigos = df_excel["CODIGO"].astype(str).tolist()
@@ -936,36 +935,65 @@ def pagina_admin():
         else:
             cod_a_editar = st.selectbox("Busque el código a modificar", lista_codigos, key="edit_search")
             
-            if "edit_mode" not in st.session_state: st.session_state["edit_mode"] = False
+            if "edit_mode" not in st.session_state: 
+                st.session_state["edit_mode"] = False
 
             fila_data = df_excel[df_excel["CODIGO"].astype(str) == cod_a_editar].iloc[0]
 
             if not st.session_state["edit_mode"]:
                 st.write(f"**Documento:** {fila_data['TITULO DE DOCUMENTO']}")
+                st.write(f"**Código Actual:** {fila_data['CODIGO']}")
                 if st.button("Habilitar Edición"):
                     st.session_state["edit_mode"] = True
-                    rerun_without_experimental()
+                    st.rerun()
             else:
-                # Campos de edición
-                new_titulo = st.text_input("Título", value=fila_data["TITULO DE DOCUMENTO"])
-                new_resp = st.text_input("Responsable", value=fila_data["RESPONSABLE"] if pd.notna(fila_data["RESPONSABLE"]) else "")
-                new_link = st.text_input("Enlace ABRIR", value=fila_data["ABRIR"] if pd.notna(fila_data["ABRIR"]) else "")
+                # --- CAMPOS DE EDICIÓN AMPLIADOS ---
+                st.warning(f"Editando el registro: {cod_a_editar}")
                 
+                col_ed1, col_ed2 = st.columns(2)
+                
+                with col_ed1:
+                    new_codigo = st.text_input("Código (ID Único)", value=str(fila_data["CODIGO"]))
+                    new_titulo = st.text_input("Título", value=fila_data["TITULO DE DOCUMENTO"])
+                    new_proceso = st.text_input("Proceso", value=fila_data["PROCESO"] if pd.notna(fila_data["PROCESO"]) else "")
+                    new_macro = st.selectbox("Macroproceso", 
+                                           ["ESTRATÉGICO", "MISIONAL", "APOYO"], 
+                                           index=["ESTRATÉGICO", "MISIONAL", "APOYO"].index(fila_data["MACROPROCESO"]) if pd.notna(fila_data["MACROPROCESO"]) else 0)
+
+                with col_ed2:
+                    new_subproceso = st.text_input("Subproceso", value=fila_data["SUBPROCESO"] if pd.notna(fila_data["SUBPROCESO"]) else "")
+                    new_viva_col = st.text_input("Proceso VIVA 1A (COL)", value=fila_data["PROCESO VIVA 1A (COL)"] if pd.notna(fila_data["PROCESO VIVA 1A (COL)"]) else "")
+                    new_resp = st.text_input("Responsable", value=fila_data["RESPONSABLE"] if pd.notna(fila_data["RESPONSABLE"]) else "")
+                    new_link = st.text_input("Enlace ABRIR", value=fila_data["ABRIR"] if pd.notna(fila_data["ABRIR"]) else "")
+
+                # --- BOTONES DE ACCIÓN ---
                 ec1, ec2 = st.columns(2)
                 with ec1:
                     if st.button("Confirmar Cambios"):
+                        # Obtener el índice real en el DataFrame
                         idx = df_excel[df_excel["CODIGO"].astype(str) == cod_a_editar].index[0]
+                        
+                        # Actualizar todos los campos
+                        df_excel.at[idx, "CODIGO"] = new_codigo
                         df_excel.at[idx, "TITULO DE DOCUMENTO"] = new_titulo
                         df_excel.at[idx, "RESPONSABLE"] = new_resp
                         df_excel.at[idx, "ABRIR"] = new_link
+                        df_excel.at[idx, "PROCESO"] = new_proceso
+                        df_excel.at[idx, "SUBPROCESO"] = new_subproceso
+                        df_excel.at[idx, "PROCESO VIVA 1A (COL)"] = new_viva_col
+                        df_excel.at[idx, "MACROPROCESO"] = new_macro
+
+                        # Guardar en el archivo físico
                         df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
-                        st.success("Cambios aplicados.")
+                        
+                        st.success("✅ Registro actualizado correctamente.")
                         st.session_state["edit_mode"] = False
-                        rerun_without_experimental()
+                        st.rerun()
+                        
                 with ec2:
                     if st.button("Descartar"):
                         st.session_state["edit_mode"] = False
-                        rerun_without_experimental()
+                        st.rerun()
 
     # ====== TAB 2: ELIMINAR REGISTRO ======
     with tabs[2]:

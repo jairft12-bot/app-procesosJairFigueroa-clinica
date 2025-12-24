@@ -1,11 +1,12 @@
 import os
 import datetime
 import smtplib
-
+import unicodedata
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
+import streamlit.components.v1 as components
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -14,6 +15,8 @@ st.set_page_config(page_title="Procesos", layout="wide")
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import pandas as pd
+
 
 # --- CONFIGURACIÓN GLOBAL DE INTERFAZ ---
 st.set_page_config(page_title="Gestión Viva 1A", layout="wide")
@@ -228,7 +231,42 @@ def login():
                 rerun()  # <-- aquí forzamos refresco inmediato para evitar doble clic
             else:
                 st.error("Usuario o contraseña incorrectos")
+if "logged" not in st.session_state:
+    st.session_state.logged = False
 
+def detector_inactividad(minutos=1):
+    milisegundos = minutos * 60 * 1000
+    # Este script detecta clics, movimiento de mouse y teclas
+    # Si pasa el tiempo, busca el botón de "Cerrar sesión" y le hace clic automáticamente
+    # O simplemente recarga la página para limpiar el session_state
+    
+    components.html(f"""
+        <script>
+        const timeout = {milisegundos};
+        let idleTimer = null;
+
+        function logout() {{
+            window.parent.location.reload(); 
+        }}
+
+        function resetTimer() {{
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(logout, timeout);
+        }}
+
+        // Eventos que resetean el cronómetro
+        window.parent.document.onmousemove = resetTimer;
+        window.parent.document.onkeypress = resetTimer;
+        window.parent.document.onclick = resetTimer;
+        window.parent.document.onscroll = resetTimer;
+
+        resetTimer();
+        </script>
+    """, height=0)
+
+# USO DENTRO DE TU APP:
+if st.session_state["logged"]:
+    detector_inactividad(15) # Configura aquí los minutos
 
 def logout():
     st.session_state["logged"] = False
@@ -422,16 +460,49 @@ def pagina_inicio():
         st.error(f"Error al procesar los datos: {e}")
 
 
-import streamlit as st
-import pandas as pd
-import os
-import datetime
+def normalizar(texto):
+    """Limpia el texto: minúsculas, quita tildes, espacios y símbolos."""
+    if not texto: 
+        return ""
+    texto = texto.lower()
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    return "".join(c for c in texto if c.isalnum())
 
 def pagina_procesos():
+    # --- ESTILOS CSS REFORZADOS (Buscador blanco, texto negro) ---
+    st.markdown("""
+        <style>
+        input[type="text"], .stTextInput div div input {
+            background-color: white !important;
+            color: black !important;
+            -webkit-text-fill-color: black !important;
+            border: 1px solid #d3d3d3 !important;
+        }
+        div[data-baseweb="select"] > div {
+            background-color: white !important;
+            color: black !important;
+        }
+        div[data-testid="stSelectbox"] p, div[data-testid="stSelectbox"] span {
+            color: black !important;
+        }
+        .kpi-card {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border-top: 4px solid #002b5c;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 10px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h1 style='color: #002b5c;'>📌 Gestión de Procesos Institucionales</h1>", unsafe_allow_html=True)
 
     try:
-        # 1. CARGA DE DATOS
         df = cargar_excel()
         df_mapa = cargar_mapeo_procesos() 
         df_proced = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() == "PROCEDIMIENTO"].copy()
@@ -439,7 +510,7 @@ def pagina_procesos():
         st.error(f"❌ Error al cargar los datos: {e}")
         return
 
-    # --- SIDEBAR: FILTRO POR ÁREA ---
+    # --- SIDEBAR ---
     with st.sidebar:
         st.markdown("### 🏢 Configuración")
         areas = sorted(df_proced["PROCESO"].dropna().unique().tolist())
@@ -452,26 +523,38 @@ def pagina_procesos():
         st.info("No hay procesos disponibles.")
         return
 
-    # --- SELECTOR DE PROCESO ---
-    seleccionado = st.selectbox("Selecciona el proceso:", nombres_procesos, key="sel_doc")
-    fila = df_filtrado[df_filtrado["TITULO DE DOCUMENTO"] == seleccionado].iloc[0]
-
-    st.markdown("---")
-
     # ==========================================
     # SISTEMA DE PESTAÑAS
     # ==========================================
     tab_doc, tab_mapa = st.tabs(["📄 Ficha del Documento", "📍 Ubicación en Mapa Estratégico"])
 
     with tab_doc:
-        # --- 1. FICHA TÉCNICA ---
+        # --- BUSCADOR Y SELECTOR (DENTRO DE LA FICHA) ---
+        st.markdown("### 🔍 Selección de Proceso")
+        col_sel, col_busq = st.columns([1, 1])
+
+        with col_busq:
+            texto_filtro = st.text_input("Escribe para buscar:", placeholder="Ej: fallecimiento", key="txt_busq_ficha_final")
+
+        palabras = texto_filtro.lower().split()
+        opciones_filtradas = [n for n in nombres_procesos if all(p in n.lower() for p in palabras)]
+
+        with col_sel:
+            if opciones_filtradas:
+                seleccionado = st.selectbox("Selecciona de la lista:", opciones_filtradas, key="sel_doc_ficha_final")
+            else:
+                st.warning("No hay coincidencias."); st.stop()
+
+        fila = df_filtrado[df_filtrado["TITULO DE DOCUMENTO"] == seleccionado].iloc[0]
+        st.markdown("---")
+
+        # --- 1. FICHA TÉCNICA (KPIs) ---
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.markdown(f'<div class="kpi-card"><h3>Código</h3><p>{fila.get("CODIGO", "N/A")}</p></div>', unsafe_allow_html=True)
         with c2: st.markdown(f'<div class="kpi-card"><h3>Versión</h3><p>{fila.get("VERSIÓN", "1")}</p></div>', unsafe_allow_html=True)
         with c3: st.markdown(f'<div class="kpi-card"><h3>Emisión</h3><p>{fila.get("EMISION", "N/A")}</p></div>', unsafe_allow_html=True)
         with c4: st.markdown(f'<div class="kpi-card"><h3>Vigencia</h3><p>{fila.get("VIGENCIA", "N/A")}</p></div>', unsafe_allow_html=True)
 
-        # Botón PDF
         enlace = fila.get("ABRIR", "")
         if enlace and str(enlace).strip().startswith("http"):
             st.markdown(f'<a href="{enlace}" target="_blank" style="text-decoration:none;"><div style="background-color:#002b5c;color:white;padding:12px;text-align:center;border-radius:8px;font-weight:bold;border-bottom:4px solid #e31e24;margin-top:10px;">📥 ABRIR PDF OFICIAL</div></a><br>', unsafe_allow_html=True)
@@ -480,31 +563,21 @@ def pagina_procesos():
         with st.expander("📊 Ver Diagrama de Flujo del Proceso", expanded=True):
             ruta_base = "DIAGRAMA"
             archivo_encontrado = None
-
-            def normalizar(texto):
-                return "".join(c for c in texto.lower() if c.isalnum())
-
             if os.path.exists(ruta_base):
-                extensiones_validas = (".png", ".jpg", ".jpeg", ".webp")
-                archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith(extensiones_validas)]
+                archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
                 nombre_target = normalizar(seleccionado)
-                
                 for archivo in archivos:
-                    nombre_archivo_sin_ext = archivo.rsplit(".", 1)[0]
-                    if normalizar(nombre_archivo_sin_ext) in nombre_target:
+                    if normalizar(archivo.rsplit(".", 1)[0]) in nombre_target:
                         archivo_encontrado = archivo
                         break
-                
                 if archivo_encontrado:
-                    st.image(os.path.join(ruta_base, archivo_encontrado), width=1200)
-                else:
-                    st.info("No hay un diagrama visual cargado para este proceso.")
-            else:
-                st.error("❌ Carpeta de diagramas no encontrada.")
+                    if archivo_encontrado:
+    # Cambia el 500 por el número de píxeles que desees (ej: 400, 700, 900)
+                     st.image(os.path.join(ruta_base, archivo_encontrado), width=1300)
 
-        # --- 3. GESTIÓN DE COMENTARIOS (DENTRO DE ESTA PESTAÑA) ---
+        # --- 3. GESTIÓN DE COMENTARIOS (RESTAURADO) ---
         st.markdown("### 💬 Programar Revisión y Comentarios")
-        with st.form("form_nuevo_comentario", clear_on_submit=True):
+        with st.form("form_comentarios_final", clear_on_submit=True):
             col_f1, col_f2 = st.columns([2, 1])
             with col_f1:
                 nuevo_coment = st.text_area("Observaciones o notas de la revisión:")
@@ -530,16 +603,15 @@ def pagina_procesos():
                         enviar_correo_gmail("jairft12@gmail.com", asunto, cuerpo)
                         
                         st.success("✅ Comentario guardado y correo enviado.")
-                        st.rerun()
                     except Exception as e:
                         st.error(f"Error al guardar: {e}")
                 else:
                     st.warning("Escribe un comentario antes de guardar.")
 
     with tab_mapa:
-        # --- 4. MAPA ESTRATÉGICO (SIN GRÁFICAS, SOLO INFORMACIÓN) ---
+        # Pestaña limpia: Solo mapa
         if df_mapa is not None:
-            # KPIs del Mapa
+            st.markdown(f"### 📍 Ubicación en Mapa: {seleccionado}")
             ct1, ct2, ct3 = st.columns(3)
             with ct1: st.markdown(f'<div class="kpi-card"><h3>Total Áreas</h3><p>{len(df_mapa)}</p></div>', unsafe_allow_html=True)
             with ct2: 
@@ -550,183 +622,231 @@ def pagina_procesos():
                 st.markdown(f'<div class="kpi-card"><h3>Misionales</h3><p>{mis_n}</p></div>', unsafe_allow_html=True)
 
             st.markdown("---")
-
-            # Columnas de Responsables (Incluye Áreas y Líderes con nombre completo)
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 st.markdown("<h3 style='color: #002b5c;'>🚀 Estratégicos</h3>", unsafe_allow_html=True)
                 df_est = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)]
                 for _, r in df_est.iterrows():
-                    resaltado = "border: 2px solid #002b5c; box-shadow: 0px 0px 8px rgba(0,43,92,0.2);" if r['AREA'] == fila['PROCESO'] else ""
-                    st.markdown(f"""
-                        <div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
-                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    res = "border: 2px solid #002b5c; box-shadow: 0px 0px 8px rgba(0,43,92,0.2);" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f'<div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px; {res}"><b>{r["AREA"]}</b><br><small>👤 {r["RESPONSABLE"]}</small></div>', unsafe_allow_html=True)
 
             with col2:
                 st.markdown("<h3 style='color: #e31e24;'>🏥 Misionales</h3>", unsafe_allow_html=True)
                 df_mis = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)]
                 for _, r in df_mis.iterrows():
-                    resaltado = "border: 2px solid #e31e24; box-shadow: 0px 0px 8px rgba(227,30,36,0.2);" if r['AREA'] == fila['PROCESO'] else ""
-                    st.markdown(f"""
-                        <div style="border-left: 5px solid #e31e24; background: #fff5f5; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
-                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    res = "border: 2px solid #e31e24; box-shadow: 0px 0px 8px rgba(227,30,36,0.2);" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f'<div style="border-left: 5px solid #e31e24; background: #fff5f5; padding: 10px; margin-bottom: 5px; border-radius: 5px; {res}"><b>{r["AREA"]}</b><br><small>👤 {r["RESPONSABLE"]}</small></div>', unsafe_allow_html=True)
 
             with col3:
                 st.markdown("<h3 style='color: #7b7b7b;'>⚙️ Apoyo</h3>", unsafe_allow_html=True)
                 df_apo = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Apoyo", na=False, case=False)]
                 for _, r in df_apo.iterrows():
-                    resaltado = "border: 2px solid #7b7b7b;" if r['AREA'] == fila['PROCESO'] else ""
-                    st.markdown(f"""
-                        <div style="border-left: 5px solid #7b7b7b; background: #f1f1f1; padding: 10px; margin-bottom: 5px; border-radius: 5px; {resaltado}">
-                            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    res = "border: 2px solid #7b7b7b;" if r['AREA'] == fila['PROCESO'] else ""
+                    st.markdown(f'<div style="border-left: 5px solid #7b7b7b; background: #f1f1f1; padding: 10px; margin-bottom: 5px; border-radius: 5px; {res}"><b>{r["AREA"]}</b><br><small>👤 {r["RESPONSABLE"]}</small></div>', unsafe_allow_html=True)
         else:
             st.warning("No se pudo cargar la información del Mapa Estratégico.")
-  
+
 def pagina_documentos():
-    st.markdown("<h1 style='color: #002b5c;'>📄 Repositorio de Documentos</h1>", unsafe_allow_html=True)
-    
-    try:
-        df = cargar_excel()
-    except FileNotFoundError:
-        st.error("No se encontró el archivo 'Bitacora.xlsx'.")
-        return
+    st.markdown("## 📁 Repositorio de Documentos")
 
-    # --- FILTROS ---
-    df = df[df["TIPO DE DOCUMENTO"].astype(str).str.upper() != "PROCEDIMIENTO"]
-    
-    procesos = sorted(df["PROCESO"].dropna().unique())
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        proceso_seleccionado = st.selectbox("📍 Filtrar por Proceso", ["Todos"] + procesos)
-    with col2:
-        busqueda = st.text_input("🔍 Buscar por palabra clave (Título, Código, Responsable...)")
+    # ===============================
+    # CARGA DE DATA
+    # ===============================
+    @st.cache_data
+    def cargar_documentos():
+        ruta = "procesos/Bitacora1.xlsx"
+        df = pd.read_excel(ruta, sheet_name="Bitacora-Archivos")
 
-    # Aplicar Filtros
-    if proceso_seleccionado != "Todos":
-        df = df[df["PROCESO"] == proceso_seleccionado]
-    
-    if busqueda:
-        # Filtrar en todo el dataframe por la palabra clave
-        df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
-
-    # --- PREPARACIÓN DE DATOS ---
-    df_mostrar = df.copy()
-    
-    # Limpiamos nombres de columnas para evitar errores de espacios invisibles
-    df_mostrar.columns = df_mostrar.columns.str.strip()
-
-    # Convertimos los links en "Botones"
-    if "ABRIR" in df_mostrar.columns:
-        df_mostrar["ABRIR"] = df_mostrar["ABRIR"].apply(
-            lambda x: f'<a href="{x}" target="_blank" class="btn-abrir">Ver Documento</a>' 
-            if pd.notna(x) and str(x).startswith("http") 
-            else '<span style="color:gray">No disponible</span>'
+        # NORMALIZAR COLUMNAS
+        df.columns = (
+            df.columns
+            .str.strip()
+            .str.upper()
+            .str.replace("Á", "A")
+            .str.replace("É", "E")
+            .str.replace("Í", "I")
+            .str.replace("Ó", "O")
+            .str.replace("Ú", "U")
         )
 
-    # Definimos las columnas que queremos ver (Basado en tu lista confirmada)
-    columnas_a_ver = [
-        'CODIGO', 'TIPO DE DOCUMENTO', 'VERSIÓN', 'EMISION', 
-        'VIGENCIA', 'TITULO DE DOCUMENTO', 'PROCESO', 'ABRIR'
+        return df
+
+    df = cargar_documentos()
+
+    # ===============================
+    # COLUMNAS A MOSTRAR
+    # ===============================
+    columnas = [
+        "CODIGO",
+        "TIPO DE DOCUMENTO",
+        "VERSION",
+        "EMISION",
+        "VIGENCIA",
+        "TITULO DE DOCUMENTO",
+        "PROCESO",
+        "SUBPROCESO",
+        "RESPONSABLE",
+        "ABRIR"
     ]
-    
-    # Filtro de seguridad: Solo usamos las que existen en este archivo
-    columnas_finales = [col for col in columnas_a_ver if col in df_mostrar.columns]
 
-    # --- ESTILO CSS ---
-    st.markdown("""
+    faltantes = [c for c in columnas if c not in df.columns]
+    if faltantes:
+        st.error(f"Faltan columnas en el Excel: {', '.join(faltantes)}")
+        st.stop()
+
+    # ===============================
+    # FILTROS
+    # ===============================
+    col1, col2 = st.columns([2, 4])
+
+    with col1:
+        procesos = ["Todos"] + sorted(df["PROCESO"].dropna().unique().tolist())
+        proceso_sel = st.selectbox("📍 Filtrar por Proceso", procesos)
+
+    with col2:
+        texto_busqueda = st.text_input("🔍 Buscar documento")
+
+    df_f = df.copy()
+
+    if proceso_sel != "Todos":
+        df_f = df_f[df_f["PROCESO"] == proceso_sel]
+
+    if texto_busqueda:
+        df_f = df_f[
+            df_f.astype(str)
+            .apply(lambda x: x.str.contains(texto_busqueda, case=False, na=False))
+            .any(axis=1)
+        ]
+
+    # ===============================
+    # ESTILOS (UNA SOLA VEZ)
+    # ===============================
+       # ===============================
+    # TABLA HTML (CSS DENTRO DEL HTML)
+    # ===============================
+    tabla = """
     <style>
-        .table-container {
-            height: 600px;
-            overflow-y: auto;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-        }
-        .tabla-viva {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-        .tabla-viva thead th {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background-color: #002b5c !important;
-            color: #FFFFFF !important;
-            padding: 15px !important;
-            border-bottom: 2px solid #001a38;
-        }
-        .tabla-viva td {
-            white-space: normal;
-            word-wrap: break-word;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            color: #000000 !important; /* Asegura texto negro en la tabla */
-        }
-        .btn-abrir {
-            background-color: #002b5c;
-            color: white !important;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            display: inline-block;
-        }
-        .btn-abrir:hover { background-color: #e31e24; }
+    .tabla-container {
+        max-height: 850px;
+        overflow: auto;
+        border: 1px solid black;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    th, td {
+        border: 1px solid black !important;
+        padding: 6px;
+        text-align: center;
+        background-color: white;
+        color: black;
+    }
+
+    th {
+        background-color: #0b2c55;
+        color: white;
+        font-weight: bold;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    td.titulo {
+        text-align: left;
+        white-space: normal;
+    }
+
+    a {
+        background-color: #1f77b4;
+        color: white !important;
+        padding: 3px 8px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-size: 12px;
+    }
     </style>
-    """, unsafe_allow_html=True)
 
-    # --- RENDERIZADO DE TABLA ---
-    if len(columnas_finales) > 0:
-        html_tabla = df_mostrar[columnas_finales].to_html(escape=False, index=False, classes='tabla-viva')
-        st.markdown(f'<div class="table-container">{html_tabla}</div>', unsafe_allow_html=True)
-    else:
-        st.error("⚠️ No se encontraron las columnas necesarias en el Excel.")
-        st.write("Columnas detectadas:", df_mostrar.columns.tolist())
+    <div class="tabla-container">
+    <table>
+        <tr>
+    """
 
+    for col in columnas:
+        tabla += f"<th>{col}</th>"
+
+    tabla += "</tr>"
+
+    for _, row in df_f.iterrows():
+        tabla += "<tr>"
+        tabla += f"<td>{row['CODIGO']}</td>"
+        tabla += f"<td>{row['TIPO DE DOCUMENTO']}</td>"
+        tabla += f"<td>{row['VERSION']}</td>"
+        tabla += f"<td>{row['EMISION']}</td>"
+        tabla += f"<td>{row['VIGENCIA']}</td>"
+        tabla += f"<td class='titulo'>{row['TITULO DE DOCUMENTO']}</td>"
+        tabla += f"<td>{row['PROCESO']}</td>"
+        tabla += f"<td>{row['SUBPROCESO']}</td>"
+        tabla += f"<td>{row['RESPONSABLE']}</td>"
+
+        enlace = row["ABRIR"]
+        if isinstance(enlace, str) and enlace.strip():
+            boton = f"<a href='{enlace}' target='_blank'>Abrir</a>"
+        else:
+            boton = "—"
+
+        tabla += f"<td>{boton}</td>"
+        tabla += "</tr>"
+
+    tabla += "</table></div>"
+
+    # ===============================
+    # MOSTRAR (SIN ERROR removeChild)
+    # ===============================
+    components.html(
+        tabla,
+        height=700,
+        scrolling=True
+    )
+
+
+
+
+
+
+# Ejecutar la página
+# pagina_documentos()
 def pagina_admin():
     st.header("📄 Administración")
     st.subheader("➕ Gestión de Registros")
 
     ruta_excel = "procesos/Bitacora1.xlsx"
 
-    # Cargar Excel
+    # 1. CARGA DE EXCEL CON LIMPIEZA
     try:
         df_excel = pd.read_excel(ruta_excel, sheet_name="Bitacora-Archivos")
+        df_excel.columns = df_excel.columns.str.strip() # Elimina espacios en blanco en nombres de columnas
     except Exception as e:
         st.error(f"No se pudo cargar el archivo Excel: {e}")
         return
 
     tabs = st.tabs(["Agregar nuevo", "Editar registro", "Eliminar registro", "Comentarios"])
 
-    # Función para simular rerun sin experimental_rerun()
+    # Función de refresco interno
     if "trigger" not in st.session_state:
         st.session_state["trigger"] = False
 
     def rerun_without_experimental():
         st.session_state["trigger"] = not st.session_state["trigger"]
 
-    # ====== AGREGAR NUEVO ======
+    # ====== TAB 0: AGREGAR NUEVO ======
     with tabs[0]:
         st.markdown("## ➕ Agregar Nuevo Registro")
-
-        tipos_documento = [
-            "POLÍTICA",
-            "PROCEDIMIENTO",
-            "INSTRUCTIVO",
-            "FORMATO",
-            "MANUAL",
-            "PROTOCOLO",
-            "CHECK LIST",
-            "DOCUMENTO"
-        ]
+        tipos_documento = ["POLÍTICA", "PROCEDIMIENTO", "INSTRUCTIVO", "FORMATO", "MANUAL", "PROTOCOLO", "CHECK LIST", "DOCUMENTO"]
 
         if "formulario_activo" not in st.session_state:
             st.session_state["formulario_activo"] = False
@@ -734,47 +854,58 @@ def pagina_admin():
             st.session_state["tipo_doc"] = None
 
         if not st.session_state["formulario_activo"]:
-            st.write("Seleccione el tipo de documento:")
-            for tipo in tipos_documento:
-                if st.button(tipo):
+            st.write("Seleccione el tipo de documento para comenzar:")
+            cols_tipos = st.columns(4)
+            for i, tipo in enumerate(tipos_documento):
+                if cols_tipos[i % 4].button(tipo, use_container_width=True):
                     st.session_state["tipo_doc"] = tipo
                     st.session_state["formulario_activo"] = True
                     rerun_without_experimental()
-
         else:
-            tipo = st.session_state["tipo_doc"]
-            st.markdown(f"### Nuevo registro para: **{tipo}**")
+            tipo_sel = st.session_state["tipo_doc"]
+            st.info(f"Registrando nuevo: **{tipo_sel}**")
 
-            # Campos para llenar
-            codigo = st.text_input("Código")
-            version = st.text_input("Versión")
-            emision = st.date_input("Emisión")
-            vigencia = st.date_input("Vigencia")
+            # Formulario de entrada
+            codigo = st.text_input("Código (ID Único)")
             titulo = st.text_input("Título del documento")
-            proceso = st.text_input("Proceso")
-            subproceso = st.text_input("Subproceso")
-            responsable = st.text_input("Responsable")
-            enlace = st.text_input("Enlace (columna ABRIR)")
-            archivo = st.file_uploader("Subir archivo", type=["pdf", "xlsx", "xlsm", "docx"])
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                version = st.text_input("Versión", value="01")
+                emision = st.date_input("Fecha de Emisión")
+                proceso_peru = st.text_input("Proceso (Sede Local)")
+                macroproceso = st.selectbox("Macroproceso", ["ESTRATÉGICO", "MISIONAL", "APOYO"])
+            with c2:
+                vigencia = st.date_input("Fecha de Vigencia")
+                responsable = st.text_input("Responsable del Proceso")
+                subproceso = st.text_input("Subproceso")
+                viva_col = st.text_input("Equivalencia VIVA 1A (COL)")
 
-            col1, col2 = st.columns(2)
+            enlace = st.text_input("Enlace Directo (URL)")
+            archivo = st.file_uploader("Opcional: Subir archivo físico", type=["pdf", "xlsx", "xlsm", "docx"])
 
-            with col1:
-                if st.button("💾 Guardar registro"):
-                    # Validar que código no esté vacío
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                if st.button("💾 Guardar en Bitácora"):
+                    # --- VALIDACIONES ---
                     if codigo.strip() == "":
                         st.warning("El campo Código es obligatorio.")
+                    elif codigo.strip() in df_excel["CODIGO"].astype(str).values:
+                        st.error(f"❌ El código **{codigo}** ya existe. No se permiten duplicados.")
                     else:
+                        # Crear registro
                         nueva_fila = {
-                            "CODIGO": codigo,
-                            "TIPO DE DOCUMENTO": tipo,
+                            "CODIGO": codigo.strip(),
+                            "TIPO DE DOCUMENTO": tipo_sel,
                             "VERSIÓN": version,
                             "EMISION": emision,
                             "VIGENCIA": vigencia,
                             "TITULO DE DOCUMENTO": titulo,
-                            "PROCESO": proceso,
+                            "PROCESO": proceso_peru,
                             "SUBPROCESO": subproceso,
                             "RESPONSABLE": responsable,
+                            "MACROPROCESO": macroproceso,
+                            "PROCESO VIVA 1A (COL)": viva_col,
                             "DOCUMENTACION": "",
                             "ABRIR": enlace
                         }
@@ -786,424 +917,268 @@ def pagina_admin():
                             with open(f"procesos/{archivo.name}", "wb") as f:
                                 f.write(archivo.getbuffer())
 
-                        st.success("Registro agregado correctamente.")
-
-                        # Volver a selección inicial
+                        st.success("✅ Registro guardado exitosamente.")
                         st.session_state["formulario_activo"] = False
-                        st.session_state["tipo_doc"] = None
                         rerun_without_experimental()
 
-            with col2:
+            with btn_col2:
                 if st.button("Cancelar"):
                     st.session_state["formulario_activo"] = False
-                    st.session_state["tipo_doc"] = None
                     rerun_without_experimental()
 
-    # Aquí puedes agregar los otros tabs: editar, eliminar, comentarios
-    # ... (tu código actual)
-
-
-
-# ====== EDITAR REGISTRO ======
+    # ====== TAB 1: EDITAR REGISTRO ======
     with tabs[1]:
-        st.markdown("### ✏️ Editar Registro")
-
-        if "editar_activo" not in st.session_state:
-              st.session_state["editar_activo"] = False
-        if "codigo_edit_actual" not in st.session_state:
-              st.session_state["codigo_edit_actual"] = None
-
-        codigos = df_excel["CODIGO"].astype(str).tolist()
-        if len(codigos) == 0:
-             st.info("No hay registros para editar.")
+        st.markdown("### ✏️ Editar Registro Existente")
+        lista_codigos = df_excel["CODIGO"].astype(str).tolist()
+        
+        if not lista_codigos:
+            st.info("No hay datos disponibles.")
         else:
-             seleccionado = st.selectbox("Seleccione código para editar", codigos, key="select_codigo_edit")
+            cod_a_editar = st.selectbox("Busque el código a modificar", lista_codigos, key="edit_search")
+            
+            if "edit_mode" not in st.session_state: st.session_state["edit_mode"] = False
 
-        if st.session_state["codigo_edit_actual"] != seleccionado:
-             st.session_state["editar_activo"] = False
-             st.session_state["codigo_edit_actual"] = seleccionado
-             rerun()
+            fila_data = df_excel[df_excel["CODIGO"].astype(str) == cod_a_editar].iloc[0]
 
-        fila_edit = df_excel[df_excel["CODIGO"].astype(str) == seleccionado].iloc[0]
+            if not st.session_state["edit_mode"]:
+                st.write(f"**Documento:** {fila_data['TITULO DE DOCUMENTO']}")
+                if st.button("Habilitar Edición"):
+                    st.session_state["edit_mode"] = True
+                    rerun_without_experimental()
+            else:
+                # Campos de edición
+                new_titulo = st.text_input("Título", value=fila_data["TITULO DE DOCUMENTO"])
+                new_resp = st.text_input("Responsable", value=fila_data["RESPONSABLE"] if pd.notna(fila_data["RESPONSABLE"]) else "")
+                new_link = st.text_input("Enlace ABRIR", value=fila_data["ABRIR"] if pd.notna(fila_data["ABRIR"]) else "")
+                
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    if st.button("Confirmar Cambios"):
+                        idx = df_excel[df_excel["CODIGO"].astype(str) == cod_a_editar].index[0]
+                        df_excel.at[idx, "TITULO DE DOCUMENTO"] = new_titulo
+                        df_excel.at[idx, "RESPONSABLE"] = new_resp
+                        df_excel.at[idx, "ABRIR"] = new_link
+                        df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
+                        st.success("Cambios aplicados.")
+                        st.session_state["edit_mode"] = False
+                        rerun_without_experimental()
+                with ec2:
+                    if st.button("Descartar"):
+                        st.session_state["edit_mode"] = False
+                        rerun_without_experimental()
 
-        # Si no está activo modo edición, solo mostrar datos en modo lectura
-        if not st.session_state["editar_activo"]:
-               st.text_input("Código", value=fila_edit["CODIGO"], disabled=True)
-               st.text_input("Tipo de documento", value=fila_edit["TIPO DE DOCUMENTO"], disabled=True)
-               st.text_input("Enlace (ABRIR)", value=fila_edit["ABRIR"] if pd.notna(fila_edit["ABRIR"]) else "", disabled=True)
+    # ====== TAB 2: ELIMINAR REGISTRO ======
+    with tabs[2]:
+        st.markdown("### 🗑️ Zona de Eliminación")
+        cod_eliminar = st.selectbox("Seleccione código para borrar", df_excel["CODIGO"].astype(str).tolist(), key="del_search")
+        
+        confirmar = st.checkbox(f"Confirmo que deseo borrar permanentemente el registro {cod_eliminar}")
+        if st.button("❌ Eliminar Definitivamente"):
+            if confirmar:
+                df_excel = df_excel[df_excel["CODIGO"].astype(str) != cod_eliminar]
+                df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
+                st.success("Registro eliminado.")
+                rerun_without_experimental()
+            else:
+                st.warning("Debe marcar la casilla de confirmación.")
 
-               if st.button("Editar", key="btn_editar"):
-                 st.session_state["editar_activo"] = True
-                 rerun()
-        else:
-            # Modo edición activado
-            nuevo_codigo = st.text_input("Código", value=fila_edit["CODIGO"], key="editar_codigo")
-            nuevo_tipo = st.selectbox(
-                "Tipo de documento",
-                options=["PROCEDIMIENTO", "DOCUMENTO"],
-                index=["PROCEDIMIENTO", "DOCUMENTO"].index(fila_edit["TIPO DE DOCUMENTO"].upper()) if fila_edit["TIPO DE DOCUMENTO"].upper() in ["PROCEDIMIENTO", "DOCUMENTO"] else 0,
-                key="editar_tipo"
-            )
-            nuevo_abrir = st.text_input(
-                "Enlace (ABRIR)",
-                value=fila_edit["ABRIR"] if pd.notna(fila_edit["ABRIR"]) else "",
-                key="editar_abrir"
-            )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Guardar cambios", key="btn_guardar"):
-                    idx = df_excel[df_excel["CODIGO"].astype(str) == seleccionado].index[0]
-
-                    df_excel.at[idx, "CODIGO"] = nuevo_codigo
-                    df_excel.at[idx, "TIPO DE DOCUMENTO"] = nuevo_tipo
-                    df_excel.at[idx, "ABRIR"] = nuevo_abrir
-
-                    df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
-                    st.success("Registro actualizado correctamente.")
-
-                    st.session_state["editar_activo"] = False
-                    rerun()
-
-            with col2:
-                if st.button("Cancelar", key="btn_cancelar"):
-                   st.session_state["editar_activo"] = False
-                   rerun()
-
-# ====== ELIMINAR REGISTRO ======
-        with tabs[2]:
-             st.markdown("### 🗑️ Eliminar Registro")
-
-             if "eliminar_activo" not in st.session_state:
-              st.session_state["eliminar_activo"] = False
-
-             codigos = df_excel["CODIGO"].astype(str).tolist()
-             if len(codigos) == 0:
-              st.info("No hay registros para eliminar.")
-             else:
-              seleccionado = st.selectbox("Seleccione código para eliminar", codigos, key="select_codigo_eliminar")
-
-             if not st.session_state["eliminar_activo"]:
-              st.text(f"Código seleccionado: {seleccionado}")
-             if st.button("Eliminar registro", key="btn_eliminar"):
-                st.session_state["eliminar_activo"] = True
-                rerun()
-             else:
-              confirm = st.checkbox("Confirmar eliminación", key="confirmar_eliminar")
-             if st.button("Confirmar eliminación final", key="btn_confirmar_eliminar"):
-                if confirm:
-                    df_excel = df_excel[df_excel["CODIGO"].astype(str) != seleccionado]
-                    df_excel.to_excel(ruta_excel, sheet_name="Bitacora-Archivos", index=False)
-                    st.success("Registro eliminado correctamente.")
-                    st.session_state["eliminar_activo"] = False
-                    rerun()
-                else:
-                    st.warning("Marca la casilla para confirmar eliminación.")
-
-                tabs = st.tabs(["Agregar nuevo", "Editar registro", "Eliminar registro", "Comentarios"])
-
-# ... código de agregar, editar, eliminar ...
-
-        with tabs[3]:
-             st.subheader("📋 Comentarios de Procesos")
-
-             df_coment = cargar_comentarios()
-
-             if "filtrar_comentarios" not in st.session_state:
-              st.session_state["filtrar_comentarios"] = False
-
-# Botón para activar filtro
-              if st.button("Limpiar vista (mostrar próximas 20 fechas)"):
-               st.session_state["filtrar_comentarios"] = True
-
-              if df_coment.empty:
-               st.info("No hay comentarios registrados.")
-             else:
-    # Para trabajar bien con fechas reales (tipo datetime)
-               df_coment["FECHA"] = pd.to_datetime(df_coment["FECHA"])
-               df_coment["FECHA_REVISION"] = pd.to_datetime(df_coment["FECHA_REVISION"])
-
-    # Aplica filtro solo si está activo
-             if st.session_state["filtrar_comentarios"]:
-               hoy = pd.Timestamp.now().normalize()
-               df_filtrado = df_coment[df_coment["FECHA_REVISION"] >= hoy]
-               df_filtrado = df_filtrado.sort_values("FECHA_REVISION").head(20)
-             else:
-               df_filtrado = df_coment
-
-    # Formatear fechas para mostrar bonito
-               df_filtrado_display = df_filtrado.copy()
-               df_filtrado_display["FECHA"] = df_filtrado_display["FECHA"].dt.strftime("%Y-%m-%d %H:%M")
-               df_filtrado_display["FECHA_REVISION"] = df_filtrado_display["FECHA_REVISION"].dt.strftime("%Y-%m-%d")
-
-               st.dataframe(df_filtrado_display[["PROCESO", "COMENTARIO", "USUARIO", "FECHA", "FECHA_REVISION"]])
-
-def pagina_analisis():
-    st.write("# 📊 Análisis de Calidad y Gestión Documental")
-
-    try:
-        df = cargar_excel()
+    # ====== TAB 3: COMENTARIOS ======
+    with tabs[3]:
+        st.subheader("📋 Historial de Revisiones")
         df_coment = cargar_comentarios()
-    except FileNotFoundError:
-        st.error("No se encontraron los archivos de datos (Bitacora1.xlsx o comentarios.xlsx).")
-        return
-
-    # Asegurarse de que las columnas de fecha son datetime para el análisis
-    df["VIGENCIA"] = pd.to_datetime(df["VIGENCIA"], errors='coerce')
-    df_coment["FECHA_REVISION"] = pd.to_datetime(df_coment["FECHA_REVISION"], errors='coerce')
-    
-    # -----------------------------------------------
-    st.header("1. Estabilidad Documental (Distribución de Versiones)")
-    # -----------------------------------------------
-    
-    # Limpieza básica de versiones (opcional: podrías normalizar más)
-    df_versiones = df["VERSIÓN"].astype(str).str.upper().str.strip()
-    
-    conteo_versiones = df_versiones.value_counts().reset_index()
-    conteo_versiones.columns = ['VERSIÓN', 'Cantidad']
-    
-    fig1 = px.bar(
-        conteo_versiones.sort_values(by="Cantidad", ascending=False),
-        x='VERSIÓN',
-        y='Cantidad',
-        title='Documentos por Versión',
-        color='VERSIÓN',
-        color_discrete_sequence=px.colors.qualitative.Pastel
-    )
-    
-    fig1.update_layout(template="plotly_dark", showlegend=False)
-    st.plotly_chart(fig1, use_container_width=True)
-
-    st.markdown("---")
-
-    # -----------------------------------------------
-    st.header("2. Carga de Trabajo por Responsable")
-    # -----------------------------------------------
-    
-    # Mapa de Calor/Gráfico de Barras Horizontal
-    conteo_responsables = df["RESPONSABLE"].astype(str).value_counts().reset_index().head(10) # Top 10
-    conteo_responsables.columns = ['Responsable', 'Carga']
-    
-    fig2 = px.bar(
-        conteo_responsables.sort_values(by="Carga", ascending=True),
-        y='Responsable',
-        x='Carga',
-        orientation='h',
-        title='Top 10 Responsables con Mayor Carga Documental',
-        color='Responsable',
-        color_discrete_sequence=px.colors.sequential.Teal
-    )
-    
-    fig2.update_layout(template="plotly_dark", showlegend=False, yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig2, use_container_width=True)
-
-    st.markdown("---")
-
-    # -----------------------------------------------
-    st.header("3. Planificación de Revisiones (Vigencias)")
-    # -----------------------------------------------
-
-    # Filtrar documentos con fecha de vigencia válida y no vencidos
-    df_vigentes = df[df["VIGENCIA"].dt.date >= pd.Timestamp.now().normalize().date()].copy()
-    df_vigentes["Mes de Vigencia"] = df_vigentes["VIGENCIA"].dt.strftime("%Y-%m")
-    
-    conteo_vigencia = df_vigentes["Mes de Vigencia"].value_counts().sort_index().reset_index()
-    conteo_vigencia.columns = ['Mes de Vigencia', 'Documentos a Vencer']
-    
-    fig3 = px.line(
-        conteo_vigencia,
-        x='Mes de Vigencia',
-        y='Documentos a Vencer',
-        title='Documentos cuya Vigencia Expira por Mes',
-        markers=True
-    )
-    
-    fig3.update_layout(
-        template="plotly_dark",
-        xaxis_title="Mes de Vigencia (Próximos Vencimientos)",
-        yaxis_title="Cantidad de Documentos",
-        hovermode="x unified"
-    )
-    st.plotly_chart(fig3, use_container_width=True)
-
-    st.markdown("---")
-
-    # -----------------------------------------------
-    st.header("4. Seguimiento de Comentarios y Tareas de Revisión")
-    # -----------------------------------------------
-
-    # Crear una columna de "Estado de Tarea"
-    # Para simplificar, asumiremos que un comentario es "ABIERTO" si FECHA_REVISION es futuro/hoy.
-    # En un sistema real, necesitarías una columna "CERRADO"
-    
-    df_coment = df_coment.dropna(subset=["FECHA_REVISION"]) # Solo si tienen fecha de agenda
-    
-    # Calcular el estado (si la fecha de revisión está en el futuro, es una tarea a hacer)
-    hoy = pd.Timestamp.now().normalize()
-    df_coment['ESTADO'] = df_coment['FECHA_REVISION'].apply(
-        lambda x: "PENDIENTE" if x >= hoy else "ATRASADO"
-    )
-    
-    # Mostrar KPI
-    abiertos = df_coment[df_coment["ESTADO"].isin(["PENDIENTE", "ATRASADO"])].shape[0]
-    st.metric(label="Total de Revisiones Agendadas Pendientes/Atrasadas", value=abiertos)
-    
-    # Gráfico de barras apiladas por proceso y estado
-    conteo_estado = df_coment.groupby(["PROCESO", "ESTADO"]).size().reset_index(name='Cantidad')
-    
-    fig4 = px.bar(
-        conteo_estado,
-        y='PROCESO',
-        x='Cantidad',
-        color='ESTADO',
-        orientation='h',
-        title='Distribución de Tareas de Revisión por Proceso y Estado',
-        color_discrete_map={
-            'PENDIENTE': 'yellowgreen', 
-            'ATRASADO': 'darkred'
-        }
-    )
-    
-    fig4.update_layout(template="plotly_dark", barmode='stack', yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig4, use_container_width=True)
-   
-    # Después de crear fig1
-    aplicar_formato_figura(fig1, color_sequence=px.colors.qualitative.Pastel, horizontal=False)
-    st.plotly_chart(fig1, use_container_width=True)
-
-# Después de crear fig2
-    aplicar_formato_figura(fig2, color_sequence=px.colors.sequential.Teal, horizontal=True)
-    st.plotly_chart(fig2, use_container_width=True)
-
-# === CONFIGURACIÓN PROFESIONAL PARA FIG3 (GRÁFICO DE LÍNEAS) ===
-    fig3.update_layout(
-      template="plotly_dark",
-      plot_bgcolor="rgba(44,62,80,1)",
-      paper_bgcolor="rgba(44,62,80,1)",
-      font_color="white",
-      xaxis_title="Mes de Vigencia (Próximos Vencimientos)",
-      yaxis_title="Cantidad de Documentos",
-      hovermode="x unified",
-      title=dict(
-        text="Próximos Vencimientos por Mes",
-        font=dict(size=22, family="Arial Black")
-    ),
-      xaxis=dict(
-        showgrid=True,
-        gridcolor="rgba(255,255,255,0.15)",
-        linecolor="rgba(255,255,255,0.3)"
-    ),
-      yaxis=dict(
-        showgrid=True,
-        gridcolor="rgba(255,255,255,0.15)",
-        linecolor="rgba(255,255,255,0.3)"
-    ),
-      legend=dict(
-        bgcolor="rgba(0,0,0,0)",
-        bordercolor="rgba(255,255,255,0.2)"
-    )
-)
-
-# Mostrar gráfico
-    st.plotly_chart(fig3, use_container_width=True)
-
-
-# Después de crear fig4
-    aplicar_formato_figura(fig4, horizontal=True)
-    st.plotly_chart(fig4, use_container_width=True)
-
-# ==========================================
-# FUNCIÓN PARA CARGAR LA HOJA ESPECÍFICA
-# ==========================================
+        if not df_coment.empty:
+            df_coment["FECHA_REVISION"] = pd.to_datetime(df_coment["FECHA_REVISION"])
+            st.dataframe(df_coment.sort_values("FECHA_REVISION", ascending=False), use_container_width=True)
+        else:
+            st.info("Sin comentarios registrados.")
+            # RESTAURAR ESTA FUNCIÓN PARA QUITAR EL ERROR
 def cargar_mapeo_procesos():
     archivo = "procesos/Tipo de Procesos por Responsable.xlsx"
+    if not os.path.exists(archivo):
+        return None
     try:
-        if not os.path.exists(archivo):
-            st.error(f"⚠️ No se encuentra el archivo en la ruta: {archivo}")
-            return None
         df = pd.read_excel(archivo, sheet_name="TipoProceso", skiprows=5)
-         #2. Eliminamos columnas que Excel a veces carga vacías a la izquierda
-         #Nos quedamos solo con las columnas que tienen datos
         df = df.dropna(how='all', axis=1)
-        
-        #Renombramos según el orden de tus datos: AREA, RESPONSABLE, TIPO
+        # Ajustamos columnas básicas
         df.columns = ["AREA", "RESPONSABLE", "TIPO_PROCESO"] + list(df.columns[3:])
-        
-        # Quitamos filas vacías y la fila de TOTAL
         df = df.dropna(subset=["AREA"])
         df = df[df["AREA"].astype(str).str.upper() != "TOTAL"]
-        
         return df
-    except Exception as e:
-        st.error(f"❌ Error al leer la hoja 'TipoProceso': {e}")
+    except:
         return None
-# ==========================================
-# VISTA DE LA PÁGINA MAPA ESTRATÉGICO
-# ==========================================
-#def pagina_mapa_estrategico():
-  #  st.markdown("<h1 style='color: #002b5c;'>📍 Mapa Estratégico de Procesos</h1>", unsafe_allow_html=True)
+def pagina_analisis():
+
+    # Título principal (Mantenemos tu estructura)
+    st.markdown("<h1 style='text-align: left; color: #002b5c;'>📊 Análisis de Gestión Documental</h1>", unsafe_allow_html=True)
     
-    # Aquí es donde llamamos a la función de arriba
-   # df_mapa = cargar_mapeo_procesos()
-    
-    #if df_mapa is not None:
-        # --- TARJETAS KPI (Usando tu estilo kpi-card) ---
-     #   total_areas = len(df_mapa)
-      #  c1, c2, c3 = st.columns(3)
+    # 1. Cargar y preparar datos
+    df = cargar_excel()
+    df.columns = df.columns.str.strip()
+    df["VIGENCIA"] = pd.to_datetime(df["VIGENCIA"], errors='coerce')
+    hoy = pd.Timestamp.now().normalize()
+    proximo_vencer = hoy + pd.Timedelta(days=30)
+
+    # --- BLOQUE DE INDICADORES (ESTILO INICIO) ---
+    total_docs = len(df)
+    vencidos = len(df[df["VIGENCIA"] < hoy])
+    por_vencer = len(df[(df["VIGENCIA"] >= hoy) & (df["VIGENCIA"] <= proximo_vencer)])
+
+    c1, c2, c3 = st.columns(3)
+    estilo_tarjeta = """
+        <div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px; box-shadow: 1px 1px 3px rgba(0,0,0,0.05);">
+            <span style="color: #002b5c; font-size: 14px; font-weight: bold;">{titulo}</span><br>
+            <b style="color: #1f1f1f; font-size: 24px;">{valor}</b>
+        </div>
+    """
+    with c1: st.markdown(estilo_tarjeta.format(titulo="📄 TOTAL DOCUMENTOS", valor=total_docs), unsafe_allow_html=True)
+    with c2: st.markdown(estilo_tarjeta.format(titulo="🚨 DOCUMENTOS VENCIDOS", valor=vencidos), unsafe_allow_html=True)
+    with c3: st.markdown(estilo_tarjeta.format(titulo="⚠️ PRÓXIMOS A VENCER", valor=por_vencer), unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- SUB-PESTAÑAS ---
+    sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🚀 Gestión de Vigencias", "🏗️ Estructura Estratégica", "🌍 Homologación Colombia"])
+    st.markdown("<style>.card-grafica {background: white; padding: 20px; border-radius: 15px; box-shadow: 0px 10px 20px rgba(0,0,0,0.1); border: 1px solid #f0f2f6;}</style>", unsafe_allow_html=True)
+    # ====== PESTAÑA 1: GESTIÓN DE VIGENCIAS (CONTENEDOR BLANCO TIPO CARD) ======
+    with sub_tab1:
+        # Abrimos el contenedor blanco (el "cuadrado" de la imagen)
+        st.markdown("""
+            <div style="background-color: white; padding: 25px; border-radius: 15px; border: 1px solid #f0f0f0; box-shadow: 0px 4px 12px rgba(0,0,0,0.05);">
+                <h3 style="color: #002b5c; margin-top: 0;">Semáforo de Cumplimiento por Responsable</h3>
+        """, unsafe_allow_html=True)
         
-       # with c1:
-        #    st.markdown(f'<div class="kpi-card"><h3>Total Áreas</h3><p>{total_areas}</p></div>', unsafe_allow_html=True)
-        #with c2:
-         #   est = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)])
-          #  st.markdown(f'<div class="kpi-card"><h3>Estratégicos</h3><p>{est}</p></div>', unsafe_allow_html=True)
-        #with c3:
-         #   mis = len(df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)])
-          #  st.markdown(f'<div class="kpi-card"><h3>Misionales</h3><p>{mis}</p></div>', unsafe_allow_html=True)
-
-        #st.markdown("---")
-
-        # --- SECCIONES POR TIPO ---
-        #col1, col2, col3 = st.columns(3)
+        # Filtros dentro del cuadro
+        opciones_macro = ["TODOS LOS MACROPROCESOS"] + list(df["MACROPROCESO"].dropna().unique())
+        filtro = st.selectbox("Filtrar por Nivel:", opciones_macro, key="filtro_vigencia")
         
-        #with col1:
-         #   st.markdown("<h3 style='color: #002b5c;'>🚀 Estratégicos</h3>", unsafe_allow_html=True)
-          #  df_est = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Estrategico", na=False, case=False)]
-           # for _, r in df_est.iterrows():
-            #    st.markdown(f"""
-             #       <div style="border-left: 5px solid #002b5c; background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
-              #          <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-               #     </div>
-                #""", unsafe_allow_html=True)
+        df_f = df if filtro == "TODOS LOS MACROPROCESOS" else df[df["MACROPROCESO"] == filtro]
 
-        #with col2:
-         #   st.markdown("<h3 style='color: #e31e24;'>🏥 Misionales</h3>", unsafe_allow_html=True)
-          #  df_mis = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Misionales", na=False, case=False)]
-           # for _, r in df_mis.iterrows():
-            #    st.markdown(f"""
-             #       <div style="border-left: 5px solid #e31e24; background: #fff5f5; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
-              #          <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-               #     </div>
-                #""", unsafe_allow_html=True)
+        def calcular_estado(fecha):
+            if pd.isna(fecha): return "Sin Fecha"
+            if fecha < hoy: return "Vencido"
+            if fecha <= proximo_vencer: return "Próximo (30d)"
+            return "Al día"
 
-      #  with col3:
-       #     st.markdown("<h3 style='color: #7b7b7b;'>⚙️ Apoyo</h3>", unsafe_allow_html=True)
-        #    df_apo = df_mapa[df_mapa["TIPO_PROCESO"].str.contains("Apoyo", na=False, case=False)]
-         #   for _, r in df_apo.iterrows():
-          #      st.markdown(f"""
-           #         <div style="border-left: 5px solid #7b7b7b; background: #f1f1f1; padding: 10px; margin-bottom: 5px; border-radius: 5px;">
-            #            <b>{r['AREA']}</b><br><small>👤 {r['RESPONSABLE']}</small>
-             #       </div>
-              #  """, unsafe_allow_html=True)
-# ============================
-# MOSTRAR PÁGINA SEGÚN SELECCIÓN
-# ============================
+        df_f["ESTADO"] = df_f["VIGENCIA"].apply(calcular_estado)
+        df_plot = df_f.groupby(["RESPONSABLE", "ESTADO"]).size().reset_index(name='Cantidad')
+
+        # Gráfica Horizontal
+        fig = px.bar(
+            df_plot, 
+            y="RESPONSABLE", 
+            x="Cantidad", 
+            color="ESTADO",
+            orientation='h',
+            color_discrete_map={
+                "Vencido": "#E31E24", 
+                "Próximo (30d)": "#FFC107", 
+                "Al día": "#28A745", 
+                "Sin Fecha": "#7B7B7B"
+            },
+            barmode="stack", 
+            template="plotly_white",
+            height=400
+        )
+        fig.update_layout(
+            template="simple_white",
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=10, r=10, t=50, b=10),
+            
+            # Color de todo el texto (Leyenda y nombres)
+            font=dict(color="black"), 
+            
+            # Configuración del Eje Y (Nombres de responsables)
+            yaxis=dict(
+                showgrid=False, 
+                title_text="", 
+                tickfont=dict(
+                    color="black", 
+                    size=12, 
+                    weight="bold" # <--- ESTO ES LO CORRECTO (weight en lugar de bold)
+                ), 
+                ticksuffix="  "
+            ),
+            
+            # Configuración del Eje X (Oculto)
+            xaxis=dict(
+                showgrid=False, 
+                visible=False
+            ),
+            
+            # Leyenda moderna arriba
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5,
+                title_text="",
+                font=dict(color="black")
+            )
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Cerramos el div del contenedor blanco
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ====== PESTAÑA 2: ESTRUCTURA ESTRATÉGICA ======
+    with sub_tab2:
+        st.subheader("Balance del Sistema por Macroproceso")
+        conteo_macro = df["MACROPROCESO"].value_counts().reset_index()
+        fig_pie = px.pie(
+            conteo_macro, values='count', names='MACROPROCESO', hole=0.4,
+            color_discrete_map={"ESTRATÉGICO": "#002b5c", "MISIONAL": "#E31E24", "APOYO": "#7B7B7B"}
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with sub_tab3:
+        # 1. EL TRUCO DEFINITIVO: Inyectamos el estilo al contenedor de la pestaña 
+        # Esto aplica la sombra a TODO lo que esté dentro de un 'st.container' con borde
+        st.markdown("""
+            <style>
+            /* Buscamos el contenedor de la gráfica y le aplicamos el estilo a la fuerza */
+            [data-testid="stMetricDelta"] + div, 
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                background-color: white !important;
+                border: 1px solid #ddd !important;
+                border-radius: 20px !important;
+                box-shadow: 0px 12px 30px rgba(0,0,0,0.2) !important;
+                padding: 15px !important;
+                display: block !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        st.subheader("Sincronización con VIVA 1A (COL)")
+
+        # 2. Tu lógica de datos (sin cambios)
+        df_col = df.copy()
+        df_col['VINCULADO'] = df_col['PROCESO VIVA 1A (COL)'].apply(
+            lambda x: "✅ Vinculado" if pd.notna(x) and str(x).strip() != "" else "❌ Pendiente"
+        )
+        df_resumen = df_col.groupby(['PROCESO', 'VINCULADO']).size().reset_index(name='Cant')
+
+        # 3. Tu gráfica
+        fig_col = px.bar(
+            df_resumen,
+            x='PROCESO', y='Cant', color='VINCULADO',
+            color_discrete_map={"✅ Vinculado": "#002b5c", "❌ Pendiente": "#D3D3D3"},
+            template="simple_white"
+        )
+        
+        # 4. EL CONTENEDOR (Esto es lo que recibirá la sombra del CSS de arriba)
+        with st.container(border=True):
+            st.plotly_chart(fig_col, use_container_width=True, key="grafica_viva_definitiva")
 
 pagina_activa = render_sidebar()
 
 if pagina_activa == "Inicio":
     pagina_inicio()
 elif pagina_activa == "Procesos":
-    pagina_procesos()    
+    pagina_procesos()   
+     
 elif pagina_activa == "Documentos":
     pagina_documentos()
 
